@@ -17,7 +17,7 @@ Image authenticity and text authenticity are not part of this build. They are ro
 | Challenge response scoring | Hand written rule logic | Deterministic code, no model |
 | Deepfake artifact detection | `dima806/deepfake_vs_real_image_detection` (Hugging Face) | Pretrained ViT classifier, inference only |
 | Voice authenticity | Existing prototype | Reused as is, not rebuilt |
-| Backend | FastAPI (or Flask) | Python |
+| Backend | FastAPI | Python |
 | Frontend | React or plain HTML/JS | Kept to the screens the demo needs |
 
 No model is trained or fine tuned in this build. All ML use is pretrained inference only.
@@ -36,7 +36,9 @@ This section follows ASD-STE100 (Simplified Technical English). Each step gives 
 
 ### Prerequisites
 
-Install Python 3.10 or a later version.
+Install Python 3.11 or a later version. Do not use Python 3.9. The supplied
+voice classifier requires scikit-learn 1.9.1, which requires Python 3.11 or
+later. The backend is verified with Python 3.13.
 Install Node.js 18 or a later version. Install Node.js only if you use the React frontend.
 Install Git.
 Install pip.
@@ -93,6 +95,11 @@ uvicorn app.main:app --reload
 
 The API server runs at `http://localhost:8000`.
 
+The first backend start downloads `facebook/wav2vec2-base` and the Whisper
+`tiny` model. Later starts use the local model cache. Set
+`SAPIEN_WHISPER_MODEL=base` before startup if you want the larger Whisper base
+model.
+
 ### Frontend setup
 
 Open a new terminal.
@@ -132,6 +139,15 @@ All requests go through the API layer. No detection service is called directly b
 | POST | `/start-session` | Start a session and get the first prompt |
 | POST | `/submit-response` | Submit one prompt response and get the next prompt or the completion status |
 | GET | `/get-result` | Get the combined real or synthetic signal |
+| POST | `/submit-audio` | Run voice authenticity and expected-word checks for an audio clip |
+
+Send a test audio request:
+
+```bash
+curl -X POST http://localhost:8000/submit-audio \
+  -F "expected_word=orange" \
+  -F "audio_clip=@sample.wav"
+```
 
 
 ## Project structure
@@ -140,12 +156,19 @@ All requests go through the API layer. No detection service is called directly b
 sapien/
   backend/
     app/
+      audio/
+        contracts.py
+        voice_detection.py
+        word_match.py
       main.py
       session_handler.py
       liveness_scorer.py
       frame_classifier.py
-      voice_detection.py
       decision_engine.py
+    vendor/
+      vishield/
+        training/w2v.py
+        model/deepfake_detector_w2v.joblib
     requirements.txt
   frontend/
     src/
@@ -158,6 +181,10 @@ sapien/
 ```
 
 Keep the model layer separate from the route layer in the backend. This makes it easier to swap a model later without a rewrite.
+
+The audio module has two independent checks. Vishield returns the probability
+that a voice is synthetic. Whisper checks whether the candidate said the
+prompt's expected word.
 
 ## Out of scope for this weekend
 

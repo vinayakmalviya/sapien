@@ -1,0 +1,11 @@
+fastapi
+joblib>=1.5
+librosa>=0.11
+numpy>=2.0
+openai-whisper
+python-multipart
+scikit-learn==1.9.1
+soundfile
+torch>=2.5
+transformers>=5.0
+uvicorn[standard]
