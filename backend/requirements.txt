@@ -11,3 +11,9 @@ soundfile
 torch>=2.5
 transformers>=5.0
 uvicorn[standard]
+uvicorn[standard]
+python-multipart
+transformers
+torch
+pillow
+numpy
