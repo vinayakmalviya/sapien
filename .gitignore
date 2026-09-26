@@ -1,0 +1,58 @@
+# Python bytecode and caches
+__pycache__/
+*.py[cod]
+*$py.class
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.coverage
+htmlcov/
+
+# Python virtual environments
+.venv/
+venv/
+env/
+ENV/
+
+# Local environment variables and secrets
+.env
+.env.*
+!.env.example
+
+# Python build and package artifacts
+build/
+dist/
+*.egg-info/
+.eggs/
+
+# Hugging Face and ML caches/artifacts
+.cache/
+.huggingface/
+huggingface/
+checkpoints/
+*.ckpt
+*.pth
+*.pt
+
+# Frontend dependencies and build outputs
+node_modules/
+.vite/
+coverage/
+
+# IDE and editor settings
+.idea/
+.vscode/
+*.swp
+*.swo
+
+# Operating-system files
+.DS_Store
+Thumbs.db
+Desktop.ini
+
+# Logs and temporary files
+*.log
+*.tmp
+*.temp
+tmp/
+temp/
