@@ -18,7 +18,7 @@ Image authenticity and text authenticity are not part of this build. They are ro
 | Deepfake artifact detection | `dima806/deepfake_vs_real_image_detection` (Hugging Face) | Pretrained ViT classifier, inference only |
 | Voice authenticity | Existing prototype | Reused as is, not rebuilt |
 | Backend | FastAPI | Python |
-| Frontend | React or plain HTML/JS | Kept to the screens the demo needs |
+| Frontend | React, TypeScript, Vite | Candidate and recruiter surfaces |
 
 No model is trained or fine tuned in this build. All ML use is pretrained inference only.
 
@@ -49,7 +49,7 @@ the same API when the team branches are merged.
 
 ```mermaid
 flowchart LR
-    Demo[Browser demo] -->|multipart audio + expected word| Endpoint[POST /submit-audio]
+    Client[API client] -->|multipart audio + expected word| Endpoint[POST /submit-audio]
     Endpoint --> Temp[Temporary audio file]
     Temp --> Preprocess[16 kHz mono + silence trim]
     Preprocess --> W2V[Wav2Vec2 layer 6 embedding]
@@ -58,7 +58,7 @@ flowchart LR
     Classifier --> Response[Deepfake and human scores]
     Whisper --> Match[Expected-word match]
     Match --> Response
-    Response --> Demo
+    Response --> Client
 ```
 
 ## Getting started
@@ -73,6 +73,7 @@ later. The backend is verified with Python 3.13.
 Install Git.
 Install pip.
 Install FFmpeg.
+Install Node.js and pnpm.
 
 ### Clone the repository
 
@@ -133,30 +134,24 @@ uvicorn app.main:app --reload
 The API server runs at `http://localhost:8000`.
 
 The first backend start downloads `facebook/wav2vec2-base` and the Whisper
-`tiny` model. Later starts use the local model cache. Set
-`SAPIEN_WHISPER_MODEL=base` before startup if you want the larger Whisper base
-model.
+`base` model. Later starts use the local model cache. Set
+`SAPIEN_WHISPER_MODEL=tiny` before startup if you need faster local inference.
 
-### Test with the browser
+### Frontend setup
 
-Open this URL after FastAPI starts:
+Open a second terminal and go to the frontend folder:
 
-```text
-http://localhost:8000/demo/
+```bash
+cd frontend
+pnpm install
+pnpm dev
 ```
 
-To test a live recording:
+Open `http://localhost:5173`.
 
-1. Keep the example challenge phrase, or enter your own phrase.
-2. Select **Start recording**.
-3. Read the complete phrase aloud. The recording must contain at least one second of speech.
-4. Select **Stop**.
-5. Play the preview if you want to check it.
-6. Select **Analyze audio**.
-
-You can also select an existing WAV, MP3, M4A, OGG, FLAC, or WebM file. The
-result shows the voice label, both probabilities, the Whisper transcript, the
-word match, and the flag reason.
+The frontend currently uses its mock session API while the team session backend
+is being integrated. Set `VITE_USE_MOCK_API=false` in
+`frontend/.env.development` when the four session endpoints are ready.
 
 FastAPI's interactive API documentation is available at:
 
@@ -215,9 +210,11 @@ sapien/
       test_audio.py
     requirements.txt
   frontend/
+    public/
+    src/
     index.html
-    app.js
-    styles.css
+    package.json
+    vite.config.ts
   README.md
 ```
 

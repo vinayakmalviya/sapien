@@ -9,8 +9,7 @@ from typing import AsyncIterator
 
 from fastapi import FastAPI, File, Form, HTTPException, UploadFile
 from fastapi.concurrency import run_in_threadpool
-from fastapi.responses import FileResponse, RedirectResponse
-from fastapi.staticfiles import StaticFiles
+from fastapi.middleware.cors import CORSMiddleware
 from dotenv import load_dotenv
 
 from app.audio.voice_detection import VoiceDetector
@@ -23,7 +22,6 @@ load_dotenv()
 MAX_AUDIO_BYTES = 25 * 1024 * 1024
 MAX_AUDIO_SECONDS = 30
 ALLOWED_AUDIO_SUFFIXES = {".flac", ".m4a", ".mp3", ".ogg", ".wav", ".webm"}
-FRONTEND_DIR = Path(__file__).resolve().parents[2] / "frontend"
 
 voice_detector = VoiceDetector()
 word_matcher = WordMatcher(model_name=os.getenv("SAPIEN_WHISPER_MODEL", "base"))
@@ -39,6 +37,12 @@ async def lifespan(_: FastAPI) -> AsyncIterator[None]:
 
 
 app = FastAPI(title="Sapien API", version="0.1.0", lifespan=lifespan)
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["http://localhost:5173", "http://127.0.0.1:5173"],
+    allow_methods=["GET", "POST", "OPTIONS"],
+    allow_headers=["Content-Type"],
+)
 
 
 @app.get("/health")
@@ -104,16 +108,3 @@ async def submit_audio(
         "word_match": asdict(word_result),
         "flag_reason": None if word_result.matched else "expected_word_mismatch",
     }
-
-
-@app.get("/", include_in_schema=False)
-def demo_redirect() -> RedirectResponse:
-    return RedirectResponse("/demo/")
-
-
-@app.get("/favicon.ico", include_in_schema=False)
-def favicon() -> FileResponse:
-    return FileResponse(FRONTEND_DIR / "favicon.svg", media_type="image/svg+xml")
-
-
-app.mount("/demo", StaticFiles(directory=FRONTEND_DIR, html=True), name="demo")
