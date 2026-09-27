@@ -1,50 +1,50 @@
 import { useCallback, useEffect, useReducer, useRef } from "react";
 import { useSubmitResponse } from "@/api/queries";
-import type { CaptureMeta, MotionDetail } from "@/api/types";
+import type { CaptureMeta } from "@/api/types";
+import { useAudioRecorder, type RecordedAudio } from "@/capture/useAudioRecorder";
+import { useFaceLandmarker } from "@/capture/useFaceLandmarker";
+import { useFrameSampler } from "@/capture/useFrameSampler";
 import { useMediaStream } from "@/capture/useMediaStream";
 import { readSessionBootstrap } from "@/lib/sessionBootstrap";
+import {
+  FRAME_SAMPLE_TIMING_1,
+  FRAME_SAMPLE_TIMING_2,
+  GOOD_FRAMES_FOR_CALIBRATION,
+} from "@/scoring/constants";
+import { getScorerForPrompt } from "@/scoring/registry";
+import type { LandmarkWindow } from "@/scoring/types";
 import { initialSessionState, sessionReducer } from "./machine";
-
-/**
- * Milestone 2 sends a fixed score. Milestone 3 replaces this with the real
- * scorer registry, driven by `useFaceLandmarker`.
- */
-const MOCK_LANDMARK_MOTION_SCORE = 0.9;
-
-/** Milestone 3 fills every field from real landmarker measurements. */
-const PLACEHOLDER_MOTION_DETAIL: MotionDetail = {
-  yaw_peak_degrees: 0,
-  yaw_direction: "none",
-  nose_dx_normalized: 0,
-  jaw_open_variance: 0,
-  blink_count: 0,
-  frames_analyzed: 0,
-  tracking_loss_ratio: 0,
-};
 
 /** The lead-in before recording starts. Section 7 of frontend-handoff.md. */
 const LEAD_IN_MS = 2000;
 
-/**
- * Milestone 2 fakes the "5 good frames" check with a fixed delay.
- * Milestone 3 replaces this with a real calibration check from
- * `useFaceLandmarker`.
- */
-const CALIBRATION_MS = 900;
+const EMPTY_WINDOW: LandmarkWindow = {
+  samples: [],
+  framesAnalyzed: 0,
+  trackingLossRatio: 1,
+};
 
 /**
  * Drives the session machine from `session/machine.ts`. Calls the API.
  * Collects the score, the frames, and the audio clip for each prompt.
  *
- * Milestone 2: the frames array is empty and the audio clip is null.
- * Milestone 4 adds `useFrameSampler` and `useAudioRecorder` here.
+ * Milestone 4: two real sampled frames and a real recorded audio clip
+ * (when the prompt has an expected word) go into every
+ * `POST /submit-response` call. Section 6.4 and 6.5 of frontend-handoff.md.
  */
 export function useSessionRunner(sessionId: string) {
   const [state, dispatch] = useReducer(sessionReducer, initialSessionState);
   const mediaStream = useMediaStream();
   const submitResponse = useSubmitResponse();
   const videoRef = useRef<HTMLVideoElement>(null);
+  const landmarker = useFaceLandmarker(videoRef);
+  const frameSampler = useFrameSampler(videoRef);
+  const audioRecorder = useAudioRecorder();
   const promptStartedAtRef = useRef<number>(0);
+  const pendingWindowRef = useRef<LandmarkWindow>(EMPTY_WINDOW);
+  const pendingFramesRef = useRef<string[]>([]);
+  const pendingAudioRef = useRef<RecordedAudio | null>(null);
+  const isRecordingAudioRef = useRef(false);
 
   const start = useCallback(() => {
     dispatch({ type: "START", sessionId });
@@ -72,27 +72,28 @@ export function useSessionRunner(sessionId: string) {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [state.status]);
 
-  // calibrating -> wait, then read the first prompt the launcher stored.
+  // calibrating -> wait for 5 good frames from the landmarker, then read
+  // the first prompt the launcher stored. Section 7 of frontend-handoff.md.
   useEffect(() => {
     if (state.status !== "calibrating") return;
-    const timer = setTimeout(() => {
-      const bootstrap = readSessionBootstrap(sessionId);
-      if (!bootstrap) {
-        dispatch({
-          type: "FATAL_ERROR",
-          message:
-            "No session data found on this device. Open this link from the launcher.",
-        });
-        return;
-      }
+    if (landmarker.snapshot.consecutiveGoodFrames < GOOD_FRAMES_FOR_CALIBRATION) {
+      return;
+    }
+    const bootstrap = readSessionBootstrap(sessionId);
+    if (!bootstrap) {
       dispatch({
-        type: "CALIBRATED",
-        prompt: bootstrap.firstPrompt,
-        totalPrompts: bootstrap.totalPrompts,
+        type: "FATAL_ERROR",
+        message:
+          "No session data found on this device. Open this link from the launcher.",
       });
-    }, CALIBRATION_MS);
-    return () => clearTimeout(timer);
-  }, [state.status, sessionId]);
+      return;
+    }
+    dispatch({
+      type: "CALIBRATED",
+      prompt: bootstrap.firstPrompt,
+      totalPrompts: bootstrap.totalPrompts,
+    });
+  }, [state.status, landmarker.snapshot.consecutiveGoodFrames, sessionId]);
 
   // prompt_shown -> a 2-second lead-in, then start recording.
   useEffect(() => {
@@ -104,32 +105,90 @@ export function useSessionRunner(sessionId: string) {
     return () => clearTimeout(timer);
   }, [state.status]);
 
-  // recording -> run for prompt.duration_ms, then upload.
+  // recording -> run for prompt.duration_ms. Capture landmark samples for
+  // the whole window, two sampled frames at 40% and 80% of the window, and
+  // an audio clip when the prompt has an expected word. Then upload.
   useEffect(() => {
     if (state.status !== "recording" || !state.currentPrompt) return;
+    const prompt = state.currentPrompt;
     promptStartedAtRef.current = Date.now();
-    const timer = setTimeout(
-      () => dispatch({ type: "RECORDING_COMPLETE" }),
-      state.currentPrompt.duration_ms,
-    );
-    return () => clearTimeout(timer);
+    landmarker.beginRecording();
+    pendingFramesRef.current = [];
+
+    const shouldRecordAudio = prompt.expected_word !== null;
+    isRecordingAudioRef.current =
+      shouldRecordAudio && mediaStream.stream
+        ? audioRecorder.startRecording(mediaStream.stream)
+        : false;
+
+    const frameTimer1 = setTimeout(() => {
+      const frame = frameSampler.captureFrame();
+      if (frame) pendingFramesRef.current.push(frame);
+    }, prompt.duration_ms * FRAME_SAMPLE_TIMING_1);
+
+    const frameTimer2 = setTimeout(() => {
+      const frame = frameSampler.captureFrame();
+      if (frame) pendingFramesRef.current.push(frame);
+    }, prompt.duration_ms * FRAME_SAMPLE_TIMING_2);
+
+    const endTimer = setTimeout(async () => {
+      pendingWindowRef.current = landmarker.endRecording();
+      pendingAudioRef.current = isRecordingAudioRef.current
+        ? await audioRecorder.stopRecording()
+        : null;
+      dispatch({ type: "RECORDING_COMPLETE" });
+    }, prompt.duration_ms);
+
+    return () => {
+      clearTimeout(frameTimer1);
+      clearTimeout(frameTimer2);
+      clearTimeout(endTimer);
+    };
+    // landmarker/frameSampler/audioRecorder methods are stable across renders.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [state.status, state.currentPrompt]);
 
-  // uploading -> POST /submit-response.
+  // uploading -> score the window, then POST /submit-response.
   useEffect(() => {
     if (state.status !== "uploading" || !state.currentPrompt || !state.sessionId) {
       return;
     }
     const prompt = state.currentPrompt;
     const sessionIdForUpload = state.sessionId;
+
+    let scoreResult;
+    try {
+      const scorer = getScorerForPrompt(prompt);
+      scoreResult = scorer(pendingWindowRef.current);
+    } catch (err) {
+      dispatch({
+        type: "FATAL_ERROR",
+        message:
+          err instanceof Error
+            ? err.message
+            : `No scorer for prompt type "${prompt.type}".`,
+      });
+      return;
+    }
+
     const videoTrack = mediaStream.stream?.getVideoTracks()[0];
     const settings = videoTrack?.getSettings();
+    const window = pendingWindowRef.current;
     const captureMeta: CaptureMeta = {
       duration_ms: Date.now() - promptStartedAtRef.current,
       video_width: settings?.width ?? 640,
       video_height: settings?.height ?? 480,
-      landmarker_fps: 0, // Milestone 3 fills this in.
+      landmarker_fps:
+        window.framesAnalyzed > 0
+          ? Number(
+              (
+                (window.framesAnalyzed / captureDurationSeconds(window)) || 0
+              ).toFixed(1),
+            )
+          : 0,
     };
+
+    const audio = pendingAudioRef.current;
 
     let cancelled = false;
     submitResponse
@@ -137,11 +196,11 @@ export function useSessionRunner(sessionId: string) {
         session_id: sessionIdForUpload,
         prompt_index: prompt.index,
         prompt_type: prompt.type,
-        landmark_motion_score: MOCK_LANDMARK_MOTION_SCORE,
-        motion_detail: PLACEHOLDER_MOTION_DETAIL,
-        frames: [], // Milestone 4 adds the sampled frames.
-        audio_clip: null, // Milestone 4 adds the recorded clip.
-        audio_mime: "",
+        landmark_motion_score: scoreResult.score,
+        motion_detail: scoreResult.detail,
+        frames: pendingFramesRef.current,
+        audio_clip: audio?.audioBase64 ?? null,
+        audio_mime: audio?.mimeType ?? "",
         capture_meta: captureMeta,
       })
       .then((response) => {
@@ -172,5 +231,12 @@ export function useSessionRunner(sessionId: string) {
     dispatch({ type: "SHOW_NEXT_PROMPT" });
   }, [state.status]);
 
-  return { state, mediaStream, videoRef, start };
+  return { state, mediaStream, videoRef, landmarker, start };
+}
+
+function captureDurationSeconds(window: LandmarkWindow): number {
+  if (window.samples.length < 2) return 0;
+  const first = window.samples[0].t;
+  const last = window.samples.at(-1)!.t;
+  return (last - first) / 1000;
 }

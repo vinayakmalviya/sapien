@@ -1,7 +1,9 @@
 import { createFileRoute } from "@tanstack/react-router";
+import { CalibrationHint } from "@/components/candidate/CalibrationHint";
 import { CameraFeed } from "@/components/candidate/CameraFeed";
 import { CandidateShell } from "@/components/candidate/CandidateShell";
 import { CountdownRing } from "@/components/candidate/CountdownRing";
+import { LandmarkOverlay } from "@/components/candidate/LandmarkOverlay";
 import { PermissionGate } from "@/components/candidate/PermissionGate";
 import { PromptCard } from "@/components/candidate/PromptCard";
 import { Button } from "@/components/ui/button";
@@ -14,7 +16,8 @@ export const Route = createFileRoute("/interview/$sessionId")({
 
 function InterviewPage() {
   const { sessionId } = Route.useParams();
-  const { state, mediaStream, videoRef, start } = useSessionRunner(sessionId);
+  const { state, mediaStream, videoRef, landmarker, start } =
+    useSessionRunner(sessionId);
 
   if (state.status === "idle") {
     return (
@@ -74,6 +77,10 @@ function InterviewPage() {
         <div className="flex w-full max-w-3xl flex-col items-center gap-6">
           <div className="relative">
             <CameraFeed videoRef={videoRef} stream={mediaStream.stream} />
+            <LandmarkOverlay
+              videoRef={videoRef}
+              rawLandmarksRef={landmarker.rawLandmarksRef}
+            />
             {state.status === "prompt_shown" || state.status === "recording" ? (
               <div className="absolute bottom-3 right-3 rounded-full bg-white/80 p-1">
                 <CountdownRing
@@ -85,7 +92,9 @@ function InterviewPage() {
           </div>
 
           {state.status === "calibrating" ? (
-            <p className="text-sm text-slate-500">Centring… hold still.</p>
+            <CalibrationHint
+              goodFrames={landmarker.snapshot.consecutiveGoodFrames}
+            />
           ) : null}
 
           {state.currentPrompt &&

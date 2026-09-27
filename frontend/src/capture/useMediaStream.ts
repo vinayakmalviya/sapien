@@ -3,7 +3,18 @@ import { useCallback, useEffect, useRef, useState } from "react";
 /** Section 6.2 of frontend-handoff.md. The hook reports one of these four states. */
 export type MediaStreamStatus = "idle" | "prompting" | "granted" | "denied";
 
-const VIDEO_CONSTRAINTS: MediaTrackConstraints = { width: 640, height: 480 };
+/**
+ * Some cameras (phone-as-webcam setups in particular) default to a very
+ * high frame rate at low resolution — 100+ fps at 640x480 is common — when
+ * no `frameRate` constraint is given. That wastes CPU in the landmarker
+ * loop for no benefit: MediaPipe cannot detect a face any better at 100
+ * frames a second than at 30. Cap it explicitly.
+ */
+const VIDEO_CONSTRAINTS: MediaTrackConstraints = {
+  width: 640,
+  height: 480,
+  frameRate: { ideal: 30, max: 30 },
+};
 
 /**
  * Camera and microphone access.
