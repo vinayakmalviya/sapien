@@ -8,14 +8,20 @@ from typing import AsyncIterator
 
 from fastapi import FastAPI, File, Form, HTTPException, UploadFile
 from fastapi.concurrency import run_in_threadpool
+from fastapi.responses import FileResponse, RedirectResponse
+from fastapi.staticfiles import StaticFiles
+from dotenv import load_dotenv
 
 from app.audio.voice_detection import VoiceDetector
 from app.audio.word_match import WordMatcher
 from vendor.vishield.training.features import AudioValidationError
 
 
+load_dotenv()
+
 MAX_AUDIO_BYTES = 25 * 1024 * 1024
 ALLOWED_AUDIO_SUFFIXES = {".flac", ".m4a", ".mp3", ".ogg", ".wav", ".webm"}
+FRONTEND_DIR = Path(__file__).resolve().parents[2] / "frontend"
 
 voice_detector = VoiceDetector()
 word_matcher = WordMatcher(model_name=os.getenv("SAPIEN_WHISPER_MODEL", "tiny"))
@@ -86,3 +92,16 @@ async def submit_audio(
         "word_match": asdict(word_result),
         "flag_reason": None if word_result.matched else "expected_word_mismatch",
     }
+
+
+@app.get("/", include_in_schema=False)
+def demo_redirect() -> RedirectResponse:
+    return RedirectResponse("/demo/")
+
+
+@app.get("/favicon.ico", include_in_schema=False)
+def favicon() -> FileResponse:
+    return FileResponse(FRONTEND_DIR / "favicon.svg", media_type="image/svg+xml")
+
+
+app.mount("/demo", StaticFiles(directory=FRONTEND_DIR, html=True), name="demo")

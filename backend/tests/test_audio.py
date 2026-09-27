@@ -1,7 +1,11 @@
 import unittest
+from unittest.mock import patch
+
+import numpy as np
 
 from app.audio.voice_detection import label_from_deepfake_score
 from app.audio.word_match import WordMatcher, compare_transcript
+from vendor.vishield.training.features import SR, load_audio
 
 
 class FakeWhisperModel:
@@ -29,6 +33,22 @@ class AudioServiceTests(unittest.TestCase):
 
         self.assertFalse(result.matched)
 
+    def test_word_match_accepts_a_phrase(self) -> None:
+        result = compare_transcript(
+            "The orange fox walks quietly beneath the silver moon.",
+            "the orange fox walks quietly beneath the silver moon",
+        )
+
+        self.assertTrue(result.matched)
+
+    def test_word_match_rejects_an_incomplete_phrase(self) -> None:
+        result = compare_transcript(
+            "The orange fox walks beneath the moon.",
+            "the orange fox walks quietly beneath the silver moon",
+        )
+
+        self.assertFalse(result.matched)
+
     def test_word_matcher_uses_loaded_whisper_model(self) -> None:
         matcher = WordMatcher()
         matcher._model = FakeWhisperModel()
@@ -36,6 +56,16 @@ class AudioServiceTests(unittest.TestCase):
         result = matcher.match("unused.wav", "orange")
 
         self.assertTrue(result.matched)
+
+    @patch("vendor.vishield.training.features.subprocess.run")
+    @patch("vendor.vishield.training.features.librosa.load")
+    def test_browser_audio_uses_ffmpeg_fallback(self, mock_load, mock_run) -> None:
+        mock_load.side_effect = [RuntimeError("unsupported"), (np.ones(SR), SR)]
+
+        audio = load_audio("recording.webm")
+
+        self.assertEqual(audio.size, SR)
+        mock_run.assert_called_once()
 
 
 if __name__ == "__main__":

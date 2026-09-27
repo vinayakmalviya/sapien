@@ -24,11 +24,42 @@ No model is trained or fine tuned in this build. All ML use is pretrained infere
 
 ## Architecture
 
-Candidate browser sends video and audio to the frontend. The frontend runs MediaPipe locally and shows the prompt. The frontend sends a landmark motion score, sampled frames, and an audio clip to the API layer. The API layer routes each input to its detection service. Each service returns a score. The decision engine combines the three scores into one signal. The signal returns to the frontend's result panel.
+```mermaid
+flowchart LR
+    Browser[Candidate browser] --> UI[Session UI]
+    UI --> API[FastAPI]
+    API --> Session[Session handler]
+    Session --> Live[Liveness scorer]
+    Session --> Frame[Frame classifier]
+    Session --> Audio[Audio services]
+    Audio --> Voice[Wav2Vec2 + classifier]
+    Audio --> Words[Whisper word match]
+    Live --> Decision[Decision engine]
+    Frame --> Decision
+    Voice --> Decision
+    Words --> Decision
+    Decision --> Result[Recruiter result panel]
+```
 
-Reference files:
-- `docs/architecture-diagram.svg`
-- `docs/architecture-diagram.png`
+The current branch implements the FastAPI layer and the complete audio path.
+The liveness, frame, session, and combined decision components will connect to
+the same API when the team branches are merged.
+
+### Audio request flow
+
+```mermaid
+flowchart LR
+    Demo[Browser demo] -->|multipart audio + expected word| Endpoint[POST /submit-audio]
+    Endpoint --> Temp[Temporary audio file]
+    Temp --> Preprocess[16 kHz mono + silence trim]
+    Preprocess --> W2V[Wav2Vec2 layer 6 embedding]
+    W2V --> Classifier[Scaler + logistic regression]
+    Temp --> Whisper[Whisper tiny]
+    Classifier --> Response[Deepfake and human scores]
+    Whisper --> Match[Expected-word match]
+    Match --> Response
+    Response --> Demo
+```
 
 ## Getting started
 
@@ -39,9 +70,9 @@ This section follows ASD-STE100 (Simplified Technical English). Each step gives 
 Install Python 3.11 or a later version. Do not use Python 3.9. The supplied
 voice classifier requires scikit-learn 1.9.1, which requires Python 3.11 or
 later. The backend is verified with Python 3.13.
-Install Node.js 18 or a later version. Install Node.js only if you use the React frontend.
 Install Git.
 Install pip.
+Install FFmpeg.
 
 ### Clone the repository
 
@@ -84,7 +115,13 @@ venv\Scripts\activate
 Install the backend dependencies:
 
 ```bash
-pip install -r requirements.txt --break-system-packages
+pip install -r requirements.txt
+```
+
+Add your Hugging Face token to `backend/.env`:
+
+```env
+HF_TOKEN=hf_your_token_here
 ```
 
 Start the API server:
@@ -100,46 +137,52 @@ The first backend start downloads `facebook/wav2vec2-base` and the Whisper
 `SAPIEN_WHISPER_MODEL=base` before startup if you want the larger Whisper base
 model.
 
-### Frontend setup
+### Test with the browser
 
-Open a new terminal.
-Go to the frontend folder:
+Open this URL after FastAPI starts:
 
-```bash
-cd frontend
+```text
+http://localhost:8000/demo/
 ```
 
-Install the frontend dependencies:
+To test a live recording:
 
-```bash
-npm install
+1. Keep the example challenge phrase, or enter your own phrase.
+2. Select **Start recording**.
+3. Read the complete phrase aloud. The recording must contain at least one second of speech.
+4. Select **Stop**.
+5. Play the preview if you want to check it.
+6. Select **Analyze audio**.
+
+You can also select an existing WAV, MP3, M4A, OGG, FLAC, or WebM file. The
+result shows the voice label, both probabilities, the Whisper transcript, the
+word match, and the flag reason.
+
+FastAPI's interactive API documentation is available at:
+
+```text
+http://localhost:8000/docs
 ```
 
-Start the frontend dev server:
+### Run automated tests
+
+From the `backend` directory, run:
 
 ```bash
-npm run dev
+python -m unittest discover -s tests -v
 ```
-
-The frontend runs at `http://localhost:5173` (or the port your dev server reports).
-
-### Run the full demo
-
-Start the backend server first.
-Start the frontend server second.
-Open the frontend URL in a browser.
-Allow camera and microphone access when the browser asks.
 
 ## API overview
 
 All requests go through the API layer. No detection service is called directly by the frontend.
 
-| Method | Path | Purpose |
-|---|---|---|
-| POST | `/start-session` | Start a session and get the first prompt |
-| POST | `/submit-response` | Submit one prompt response and get the next prompt or the completion status |
-| GET | `/get-result` | Get the combined real or synthetic signal |
-| POST | `/submit-audio` | Run voice authenticity and expected-word checks for an audio clip |
+| Method | Path | Purpose | Status |
+|---|---|---|---|
+| GET | `/health` | Check whether both audio models loaded | Implemented |
+| POST | `/submit-audio` | Run voice authenticity and expected-word checks | Implemented |
+| POST | `/start-session` | Start a session and get the first prompt | Team integration |
+| POST | `/submit-response` | Submit a complete prompt response | Team integration |
+| GET | `/get-result` | Get the combined real or synthetic signal | Team integration |
 
 Send a test audio request:
 
@@ -161,22 +204,20 @@ sapien/
         voice_detection.py
         word_match.py
       main.py
-      session_handler.py
-      liveness_scorer.py
-      frame_classifier.py
-      decision_engine.py
     vendor/
       vishield/
-        training/w2v.py
-        model/deepfake_detector_w2v.joblib
+        training/
+          features.py
+          w2v.py
+        model/
+          deepfake_detector_w2v.joblib
+    tests/
+      test_audio.py
     requirements.txt
   frontend/
-    src/
-    public/
-    package.json
-  docs/
-    architecture-diagram.svg
-    architecture-diagram.png
+    index.html
+    app.js
+    styles.css
   README.md
 ```
 

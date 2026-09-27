@@ -1,0 +1,61 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Sapien Audio Check</title>
+    <link rel="icon" href="/demo/favicon.svg" type="image/svg+xml" />
+    <link rel="stylesheet" href="/demo/styles.css" />
+  </head>
+  <body>
+    <main>
+      <header>
+        <span class="eyebrow">SAPIEN</span>
+        <h1>Voice authenticity check</h1>
+        <p>Read the challenge phrase aloud, then check the recording for voice authenticity.</p>
+      </header>
+
+      <section class="panel">
+        <label for="expected-word">Challenge phrase</label>
+        <textarea id="expected-word" rows="2" autocomplete="off">The orange fox walks quietly beneath the silver moon</textarea>
+
+        <div class="controls">
+          <button id="record" type="button">Start recording</button>
+          <button id="stop" type="button" disabled>Stop</button>
+          <span id="recording-status">Not recording</span>
+        </div>
+
+        <audio id="preview" controls hidden></audio>
+
+        <div class="divider"><span>or</span></div>
+
+        <label for="audio-file">Upload an audio file</label>
+        <input id="audio-file" type="file" accept="audio/*,.webm" />
+
+        <button id="analyze" class="primary" type="button" disabled>Analyze audio</button>
+        <p id="message" role="status"></p>
+      </section>
+
+      <section id="result" class="panel result" hidden>
+        <div class="result-header">
+          <div>
+            <span class="eyebrow">RESULT</span>
+            <h2 id="label">—</h2>
+          </div>
+          <span id="confidence" class="score">—</span>
+        </div>
+
+        <dl>
+          <div><dt>Human probability</dt><dd id="human-score">—</dd></div>
+          <div><dt>Deepfake probability</dt><dd id="fake-score">—</dd></div>
+          <div><dt>Expected phrase</dt><dd id="expected-result">—</dd></div>
+          <div><dt>Transcript</dt><dd id="transcript">—</dd></div>
+          <div><dt>Word match</dt><dd id="word-match">—</dd></div>
+          <div><dt>Flag</dt><dd id="flag">—</dd></div>
+        </dl>
+      </section>
+    </main>
+
+    <script src="/demo/app.js"></script>
+  </body>
+</html>

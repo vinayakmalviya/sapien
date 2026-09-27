@@ -11,13 +11,18 @@ def normalize_words(text: str) -> list[str]:
 
 def compare_transcript(transcript: str, expected_word: str) -> WordMatchResult:
     expected_tokens = normalize_words(expected_word)
-    if len(expected_tokens) != 1:
-        raise ValueError("expected_word must contain exactly one word.")
+    if not expected_tokens:
+        raise ValueError("Expected phrase cannot be empty.")
 
-    matched = expected_tokens[0] in normalize_words(transcript)
+    transcript_tokens = normalize_words(transcript)
+    phrase_length = len(expected_tokens)
+    matched = any(
+        transcript_tokens[index : index + phrase_length] == expected_tokens
+        for index in range(len(transcript_tokens) - phrase_length + 1)
+    )
     return WordMatchResult(
         matched=matched,
-        expected_word=expected_tokens[0],
+        expected_word=" ".join(expected_tokens),
         transcript=transcript.strip(),
     )
 
