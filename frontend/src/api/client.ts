@@ -50,11 +50,23 @@ export async function apiRequest<TResponse>(
     : null;
 
   if (!response.ok) {
-    const errorBody: ApiErrorBody = payload ?? {
+    const hasApiError =
+      payload &&
+      typeof payload === "object" &&
+      "error" in payload &&
+      payload.error &&
+      typeof payload.error === "object" &&
+      "message" in payload.error;
+    const errorBody: ApiErrorBody = hasApiError
+      ? (payload as ApiErrorBody)
+      : {
       error: {
         code: "VALIDATION_ERROR",
-        message: `Request to ${path} failed with status ${response.status}.`,
-        detail: null,
+        message:
+          payload && typeof payload === "object" && "detail" in payload
+            ? String(payload.detail)
+            : `Request to ${path} failed with status ${response.status}.`,
+        detail: payload,
       },
     };
     throw new ApiError(response.status, errorBody);

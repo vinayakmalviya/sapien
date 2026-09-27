@@ -8,14 +8,6 @@ import {
   CardTitle,
 } from "@/components/ui/card";
 
-/**
- * Shows the instruction and the expected word.
- *
- * Reads `prompt.of` for the total, and `prompt.instruction` and
- * `prompt.expected_word` for display text only. This component never reads
- * `instruction` to decide any logic — that rule belongs to the scorer
- * registry, not here. Section 13 of frontend-handoff.md.
- */
 export function PromptCard({ prompt }: { prompt: Prompt }) {
   return (
     <Card className="w-full max-w-lg">
@@ -28,8 +20,11 @@ export function PromptCard({ prompt }: { prompt: Prompt }) {
         </CardTitle>
       </CardHeader>
       {prompt.expected_word ? (
-        <CardContent>
+        <CardContent className="flex flex-col items-start gap-2">
           <Badge variant="secondary">Say: "{prompt.expected_word}"</Badge>
+          <p className="text-sm text-slate-500">
+            Speak the complete phrase clearly before the timer ends.
+          </p>
         </CardContent>
       ) : null}
     </Card>

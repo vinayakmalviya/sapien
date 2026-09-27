@@ -64,6 +64,7 @@ function ConsolePage() {
               currentPromptIndex={data.current_prompt_index}
               completedPrompts={data.completed_prompts}
               status={data.status}
+              enabledModules={data.enabled_modules}
             />
 
             {data.status === "scoring" ? <ScoringState /> : null}

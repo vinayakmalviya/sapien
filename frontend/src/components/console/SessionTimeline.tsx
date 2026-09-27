@@ -1,4 +1,9 @@
-import type { CompletedPromptSummary, PromptType, SessionStatus } from "@/api/types";
+import type {
+  CompletedPromptSummary,
+  EnabledModules,
+  PromptType,
+  SessionStatus,
+} from "@/api/types";
 import { Badge } from "@/components/ui/badge";
 
 /**
@@ -28,11 +33,13 @@ export function SessionTimeline({
   currentPromptIndex,
   completedPrompts,
   status,
+  enabledModules,
 }: {
   totalPrompts: number;
   currentPromptIndex: number;
   completedPrompts: CompletedPromptSummary[];
   status: SessionStatus;
+  enabledModules: EnabledModules;
 }) {
   const steps: TimelineStep[] = Array.from(
     { length: totalPrompts },
@@ -64,14 +71,20 @@ export function SessionTimeline({
           </div>
           {step.completed ? (
             <div className="flex items-center gap-4 text-base text-neutral-400">
-              <span>liveness {step.completed.liveness_score.toFixed(2)}</span>
-              <span>frame {step.completed.frame_score.toFixed(2)}</span>
-              <span>
-                voice{" "}
-                {step.completed.voice_score === null
-                  ? "—"
-                  : step.completed.voice_score.toFixed(2)}
-              </span>
+              {enabledModules.liveness ? (
+                <span>liveness {step.completed.liveness_score.toFixed(2)}</span>
+              ) : null}
+              {enabledModules.frame ? (
+                <span>frame {step.completed.frame_score.toFixed(2)}</span>
+              ) : null}
+              {enabledModules.voice ? (
+                <span>
+                  voice{" "}
+                  {step.completed.voice_score === null
+                    ? "—"
+                    : step.completed.voice_score.toFixed(2)}
+                </span>
+              ) : null}
               <span>{step.completed.latency_ms}ms</span>
             </div>
           ) : null}

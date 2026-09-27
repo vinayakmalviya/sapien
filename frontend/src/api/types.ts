@@ -25,7 +25,7 @@ export interface Prompt {
   type: PromptType;
   /** The text shown on the candidate's screen. */
   instruction: string;
-  /** The word the candidate must speak, or null for a prompt with no spoken word. */
+  /** The phrase the candidate must speak, or null for a prompt with no speech. */
   expected_word: string | null;
   /** The length of the recording window, in milliseconds. 3000-6000. */
   duration_ms: number;

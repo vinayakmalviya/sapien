@@ -17,18 +17,54 @@ Image authenticity and text authenticity are not part of this build. They are ro
 | Challenge response scoring | Hand written rule logic | Deterministic code, no model |
 | Deepfake artifact detection | `dima806/deepfake_vs_real_image_detection` (Hugging Face) | Pretrained ViT classifier, inference only |
 | Voice authenticity | Existing prototype | Reused as is, not rebuilt |
-| Backend | FastAPI (or Flask) | Python |
-| Frontend | React or plain HTML/JS | Kept to the screens the demo needs |
+| Backend | FastAPI | Python |
+| Frontend | React, TypeScript, Vite | Candidate and recruiter surfaces |
 
 No model is trained or fine tuned in this build. All ML use is pretrained inference only.
 
 ## Architecture
 
-Candidate browser sends video and audio to the frontend. The frontend runs MediaPipe locally and shows the prompt. The frontend sends a landmark motion score, sampled frames, and an audio clip to the API layer. The API layer routes each input to its detection service. Each service returns a score. The decision engine combines the three scores into one signal. The signal returns to the frontend's result panel.
+```mermaid
+flowchart LR
+    Browser[Candidate browser] --> UI[Session UI]
+    UI --> API[FastAPI]
+    API --> Session[Session handler]
+    Session --> Live[Liveness scorer]
+    Session --> Frame[Frame classifier]
+    Session --> Audio[Audio services]
+    Audio --> Voice[Wav2Vec2 + classifier]
+    Audio --> Words[Whisper word match]
+    Live --> Decision[Decision engine]
+    Frame --> Decision
+    Voice --> Decision
+    Words --> Decision
+    Decision --> Result[Recruiter result panel]
+```
 
-Reference files:
-- `docs/architecture-diagram.svg`
-- `docs/architecture-diagram.png`
+The current branch implements the session API, browser liveness capture, audio
+authenticity, word matching, and the combined result. The frame classifier is
+disabled until that team module is merged.
+
+### Audio request flow
+
+```mermaid
+flowchart LR
+    Client[React candidate view] -->|base64 WebM in session response| Endpoint[POST /submit-response]
+    Endpoint --> Temp[Temporary audio file]
+    Temp --> Preprocess[16 kHz mono + silence trim]
+    Preprocess --> W2V[Wav2Vec2 layer 6 embedding]
+    W2V --> Classifier[Scaler + logistic regression]
+    Temp --> Whisper[Whisper tiny]
+    Classifier --> Response[Deepfake and human scores]
+    Whisper --> Match[Expected-word match]
+    Match --> Response
+    Response --> Session[In-memory session state]
+    Session --> Console[Recruiter console polling]
+```
+
+`POST /submit-audio` remains available for isolated audio testing. The React
+session uses `POST /submit-response`. A high-confidence deepfake voice is a
+safety veto and cannot be outweighed by a liveness score.
 
 ## Getting started
 
@@ -36,10 +72,13 @@ This section follows ASD-STE100 (Simplified Technical English). Each step gives 
 
 ### Prerequisites
 
-Install Python 3.10 or a later version.
-Install Node.js 18 or a later version. Install Node.js only if you use the React frontend.
+Install Python 3.11 or a later version. Do not use Python 3.9. The supplied
+voice classifier requires scikit-learn 1.9.1, which requires Python 3.11 or
+later. The backend is verified with Python 3.13.
 Install Git.
 Install pip.
+Install FFmpeg.
+Install Node.js 22.17.0 and pnpm.
 
 ### Clone the repository
 
@@ -82,7 +121,13 @@ venv\Scripts\activate
 Install the backend dependencies:
 
 ```bash
-pip install -r requirements.txt --break-system-packages
+pip install -r requirements.txt
+```
+
+Add your Hugging Face token to `backend/.env`:
+
+```env
+HF_TOKEN=hf_your_token_here
 ```
 
 Start the API server:
@@ -93,45 +138,60 @@ uvicorn app.main:app --reload
 
 The API server runs at `http://localhost:8000`.
 
+The first backend start downloads `facebook/wav2vec2-base` and the Whisper
+`base` model. Later starts use the local model cache. Set
+`SAPIEN_WHISPER_MODEL=tiny` before startup if you need faster local inference.
+
 ### Frontend setup
 
-Open a new terminal.
-Go to the frontend folder:
+Open a second terminal and go to the frontend folder:
 
 ```bash
 cd frontend
+pnpm install
+pnpm dev
 ```
 
-Install the frontend dependencies:
+Open `http://localhost:5173`.
+
+The frontend uses the live FastAPI session endpoints. Liveness and voice
+authenticity are enabled. The frame classifier stays disabled until that team
+module is merged.
+
+FastAPI's interactive API documentation is available at:
+
+```text
+http://localhost:8000/docs
+```
+
+### Run automated tests
+
+From the `backend` directory, run:
 
 ```bash
-npm install
+python -m unittest discover -s tests -v
 ```
-
-Start the frontend dev server:
-
-```bash
-npm run dev
-```
-
-The frontend runs at `http://localhost:5173` (or the port your dev server reports).
-
-### Run the full demo
-
-Start the backend server first.
-Start the frontend server second.
-Open the frontend URL in a browser.
-Allow camera and microphone access when the browser asks.
 
 ## API overview
 
 All requests go through the API layer. No detection service is called directly by the frontend.
 
-| Method | Path | Purpose |
-|---|---|---|
-| POST | `/start-session` | Start a session and get the first prompt |
-| POST | `/submit-response` | Submit one prompt response and get the next prompt or the completion status |
-| GET | `/get-result` | Get the combined real or synthetic signal |
+| Method | Path | Purpose | Status |
+|---|---|---|---|
+| GET | `/health` | Check whether both audio models loaded | Implemented |
+| POST | `/submit-audio` | Run voice authenticity and expected-word checks | Implemented |
+| POST | `/start-session` | Start a session and get the first prompt | Implemented |
+| POST | `/submit-response` | Submit a complete prompt response | Implemented |
+| GET | `/session-status` | Poll session progress and result | Implemented |
+| GET | `/get-result` | Get the combined real or synthetic signal | Implemented |
+
+Send a test audio request:
+
+```bash
+curl -X POST http://localhost:8000/submit-audio \
+  -F "expected_word=orange river seven bright morning" \
+  -F "audio_clip=@sample.wav"
+```
 
 
 ## Project structure
@@ -140,24 +200,37 @@ All requests go through the API layer. No detection service is called directly b
 sapien/
   backend/
     app/
+      audio/
+        analysis.py
+        contracts.py
+        voice_detection.py
+        word_match.py
       main.py
-      session_handler.py
-      liveness_scorer.py
-      frame_classifier.py
-      voice_detection.py
-      decision_engine.py
+      session_api.py
+    vendor/
+      vishield/
+        training/
+          features.py
+          w2v.py
+        model/
+          deepfake_detector_w2v.joblib
+    tests/
+      test_audio.py
     requirements.txt
   frontend/
-    src/
     public/
+    src/
+    index.html
     package.json
-  docs/
-    architecture-diagram.svg
-    architecture-diagram.png
+    vite.config.ts
   README.md
 ```
 
 Keep the model layer separate from the route layer in the backend. This makes it easier to swap a model later without a rewrite.
+
+The audio module has two independent checks. Vishield returns the probability
+that a voice is synthetic. Whisper checks whether the candidate said the
+prompt's expected phrase.
 
 ## Out of scope for this weekend
 

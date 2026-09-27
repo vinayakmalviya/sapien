@@ -12,7 +12,6 @@ import {
 import { ConsoleShell } from "@/components/console/ConsoleShell";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { Switch } from "@/components/ui/switch";
 import { storeSessionBootstrap } from "@/lib/sessionBootstrap";
 
 export const Route = createFileRoute("/")({
@@ -43,14 +42,19 @@ function LauncherPage() {
   const navigate = useNavigate();
   const startSession = useStartSession();
   const [candidateId, setCandidateId] = useState("demo-candidate-1");
-  const [useSyntheticClip, setUseSyntheticClip] = useState(false);
 
   async function handleStart() {
+    const candidateWindow = window.open("about:blank", "_blank");
     const [result] = await Promise.all([
-      startSession.mutateAsync({ candidate_id: candidateId }),
-      // A file source needs no camera permission — skip priming for it.
-      useSyntheticClip ? Promise.resolve() : primeCameraPermission(),
-    ]);
+      startSession.mutateAsync({
+        candidate_id: candidateId,
+        enabled_modules: { liveness: true, frame: false, voice: true },
+      }),
+      primeCameraPermission(),
+    ]).catch((error) => {
+      candidateWindow?.close();
+      throw error;
+    });
 
     // The candidate window has no other way to learn prompt 1. Both
     // windows share one browser, on one machine. localStorage is the
@@ -61,15 +65,12 @@ function LauncherPage() {
       firstPrompt: result.prompt,
     });
 
-    // The interview surface opens in its own window. The console stays in
-    // the current window. Section 5 of frontend-handoff.md: no join code,
-    // no QR code — a link is enough, both surfaces run on one machine.
-    // Milestone 6: ?source=file plays the prepared MP4 clip instead of the
-    // webcam — the synthetic-candidate demo path.
-    const interviewUrl = useSyntheticClip
-      ? `/interview/${result.session_id}?source=file`
-      : `/interview/${result.session_id}`;
-    window.open(interviewUrl, "_blank");
+    const interviewUrl = `/interview/${result.session_id}`;
+    if (candidateWindow) {
+      candidateWindow.location.href = interviewUrl;
+    } else {
+      window.open(interviewUrl, "_blank");
+    }
     navigate({ to: "/console/$sessionId", params: { sessionId: result.session_id } });
   }
 
@@ -96,24 +97,9 @@ function LauncherPage() {
                 className="border-neutral-700 bg-neutral-950 text-neutral-100"
               />
               <p className="text-xs text-neutral-500">
-                Mock mode: include &quot;synthetic&quot; in the label to demo
-                the synthetic verdict path.
+                Audio authenticity and liveness scoring run against the live
+                FastAPI backend.
               </p>
-            </div>
-            <div className="flex items-center justify-between rounded-lg border border-neutral-800 px-3 py-2.5">
-              <div className="flex flex-col">
-                <Label htmlFor="synthetic-clip" className="text-neutral-200">
-                  Use synthetic candidate clip
-                </Label>
-                <span className="text-xs text-neutral-500">
-                  Plays a prepared MP4 instead of the webcam
-                </span>
-              </div>
-              <Switch
-                id="synthetic-clip"
-                checked={useSyntheticClip}
-                onCheckedChange={setUseSyntheticClip}
-              />
             </div>
             <Button
               size="lg"
