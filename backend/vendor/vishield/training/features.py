@@ -56,9 +56,7 @@ def decode_audio(path: str | Path) -> np.ndarray:
                 converted_path.unlink(missing_ok=True)
 
 
-def load_audio(path: str | Path) -> np.ndarray:
-    audio = decode_audio(path)
-
+def prepare_audio(audio: np.ndarray) -> np.ndarray:
     if audio.size == 0:
         raise AudioValidationError("The uploaded audio contains no samples.")
 
@@ -67,3 +65,7 @@ def load_audio(path: str | Path) -> np.ndarray:
         raise AudioValidationError("Audio too short (minimum 1 second of speech)")
 
     return np.asarray(trimmed, dtype=np.float32)
+
+
+def load_audio(path: str | Path) -> np.ndarray:
+    return prepare_audio(decode_audio(path))

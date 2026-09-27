@@ -4,7 +4,7 @@ import numpy as np
 import torch
 from transformers import Wav2Vec2Model
 
-from .features import load_audio
+from .features import load_audio, prepare_audio
 
 
 MODEL_NAME = "facebook/wav2vec2-base"
@@ -29,3 +29,7 @@ def embed(audio: np.ndarray) -> np.ndarray:
 
 def embed_file(path: str | Path) -> np.ndarray:
     return embed(load_audio(path))
+
+
+def embed_decoded(audio: np.ndarray) -> np.ndarray:
+    return embed(prepare_audio(audio))

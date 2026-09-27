@@ -9,8 +9,9 @@ from vendor.vishield.training.features import SR, load_audio
 
 
 class FakeWhisperModel:
-    def transcribe(self, _: str, fp16: bool) -> dict[str, str]:
+    def transcribe(self, _: str, fp16: bool, language: str | None) -> dict[str, str]:
         assert fp16 is False
+        assert language == "en"
         return {"text": " Orange. "}
 
 
@@ -54,6 +55,18 @@ class AudioServiceTests(unittest.TestCase):
         matcher._model = FakeWhisperModel()
 
         result = matcher.match("unused.wav", "orange")
+
+        self.assertTrue(result.matched)
+
+    def test_word_match_treats_digits_and_number_words_alike(self) -> None:
+        self.assertTrue(compare_transcript("Say 7 now", "seven").matched)
+        self.assertTrue(compare_transcript("seven", "7").matched)
+
+    def test_word_matcher_accepts_decoded_audio(self) -> None:
+        matcher = WordMatcher(language="en")
+        matcher._model = FakeWhisperModel()
+
+        result = matcher.match(np.zeros(SR, dtype=np.float32), "orange")
 
         self.assertTrue(result.matched)
 

@@ -51,17 +51,28 @@ class VoiceDetector:
         load_model()
         self._classifier = classifier
 
-    def detect(self, audio_path: str | Path) -> VoiceDetectionResult:
+    def warm_up(self) -> None:
         import numpy as np
 
-        from vendor.vishield.training.w2v import embed_file
+        from vendor.vishield.training.w2v import embed
+
+        embed(np.zeros(16_000, dtype=np.float32))
+
+    def detect(self, audio: Any) -> VoiceDetectionResult:
+        """Score a decoded 16 kHz mono array, or a file path."""
+        import numpy as np
+
+        from vendor.vishield.training.w2v import embed_decoded, embed_file
 
         if not self.is_loaded:
             raise VoiceDetectorNotConfiguredError(
                 "VoiceDetector.load() must succeed during application startup."
             )
 
-        embedding = embed_file(audio_path)
+        if isinstance(audio, np.ndarray):
+            embedding = embed_decoded(audio)
+        else:
+            embedding = embed_file(audio)
         probabilities = self._classifier.predict_proba(
             np.asarray(embedding, dtype=np.float32).reshape(1, -1)
         )[0]

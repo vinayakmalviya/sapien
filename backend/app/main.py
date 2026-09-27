@@ -1,5 +1,6 @@
 import asyncio
 import os
+import shutil
 from contextlib import asynccontextmanager
 from dataclasses import asdict
 from pathlib import Path
@@ -14,23 +15,26 @@ from dotenv import load_dotenv
 
 from app.audio.voice_detection import VoiceDetector
 from app.audio.word_match import WordMatcher
-from vendor.vishield.training.features import AudioValidationError
+from vendor.vishield.training.features import SR, AudioValidationError, decode_audio
 
 
 load_dotenv()
 
 MAX_AUDIO_BYTES = 25 * 1024 * 1024
+MAX_AUDIO_SECONDS = 30
 ALLOWED_AUDIO_SUFFIXES = {".flac", ".m4a", ".mp3", ".ogg", ".wav", ".webm"}
 FRONTEND_DIR = Path(__file__).resolve().parents[2] / "frontend"
 
 voice_detector = VoiceDetector()
-word_matcher = WordMatcher(model_name=os.getenv("SAPIEN_WHISPER_MODEL", "tiny"))
+word_matcher = WordMatcher(model_name=os.getenv("SAPIEN_WHISPER_MODEL", "base"))
 
 
 @asynccontextmanager
 async def lifespan(_: FastAPI) -> AsyncIterator[None]:
     await run_in_threadpool(voice_detector.load)
     await run_in_threadpool(word_matcher.load)
+    await run_in_threadpool(voice_detector.warm_up)
+    await run_in_threadpool(word_matcher.warm_up)
     yield
 
 
@@ -45,6 +49,7 @@ def health() -> dict[str, object]:
             "voice_detection": voice_detector.is_loaded,
             "word_match": word_matcher.is_loaded,
         },
+        "ffmpeg": shutil.which("ffmpeg") is not None,
     }
 
 
@@ -70,9 +75,16 @@ async def submit_audio(
             temporary_file.write(audio_bytes)
             temporary_path = Path(temporary_file.name)
 
+        audio = await run_in_threadpool(decode_audio, temporary_path)
+        if audio.size > SR * MAX_AUDIO_SECONDS:
+            raise HTTPException(
+                status_code=413,
+                detail=f"The audio clip exceeds {MAX_AUDIO_SECONDS} seconds.",
+            )
+
         voice_result, word_result = await asyncio.gather(
-            run_in_threadpool(voice_detector.detect, temporary_path),
-            run_in_threadpool(word_matcher.match, temporary_path, expected_word),
+            run_in_threadpool(voice_detector.detect, audio),
+            run_in_threadpool(word_matcher.match, audio, expected_word),
         )
     except AudioValidationError as exc:
         raise HTTPException(status_code=422, detail=str(exc)) from exc

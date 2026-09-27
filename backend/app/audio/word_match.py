@@ -1,3 +1,4 @@
+import os
 import re
 from pathlib import Path
 from typing import Any
@@ -5,8 +6,27 @@ from typing import Any
 from .contracts import WordMatchResult
 
 
+NUMBER_WORDS = {
+    word: str(value)
+    for value, word in enumerate(
+        "zero one two three four five six seven eight nine ten eleven twelve "
+        "thirteen fourteen fifteen sixteen seventeen eighteen nineteen twenty".split()
+    )
+}
+NUMBER_WORDS.update(
+    {
+        word: str(value)
+        for value, word in zip(
+            range(30, 100, 10),
+            "thirty forty fifty sixty seventy eighty ninety".split(),
+        )
+    }
+)
+
+
 def normalize_words(text: str) -> list[str]:
-    return re.findall(r"[a-z0-9']+", text.casefold())
+    tokens = re.findall(r"[a-z0-9']+", text.casefold())
+    return [NUMBER_WORDS.get(token, token) for token in tokens]
 
 
 def compare_transcript(transcript: str, expected_word: str) -> WordMatchResult:
@@ -28,8 +48,11 @@ def compare_transcript(transcript: str, expected_word: str) -> WordMatchResult:
 
 
 class WordMatcher:
-    def __init__(self, model_name: str = "tiny") -> None:
+    def __init__(
+        self, model_name: str = "base", language: str | None = None
+    ) -> None:
         self.model_name = model_name
+        self.language = language or os.getenv("SAPIEN_WHISPER_LANGUAGE", "en") or None
         self._model: Any | None = None
 
     @property
@@ -41,10 +64,19 @@ class WordMatcher:
 
         self._model = whisper.load_model(self.model_name)
 
-    def match(self, audio_path: str | Path, expected_word: str) -> WordMatchResult:
+    def warm_up(self) -> None:
+        import numpy as np
+
+        self.match(np.zeros(16_000, dtype=np.float32), "warm up")
+
+    def match(self, audio: Any, expected_word: str) -> WordMatchResult:
+        """Transcribe a decoded 16 kHz mono array, or a file path."""
         if self._model is None:
             raise RuntimeError("WordMatcher.load() must succeed during startup.")
 
-        transcription = self._model.transcribe(str(audio_path), fp16=False)
+        source = audio if hasattr(audio, "dtype") else str(audio)
+        transcription = self._model.transcribe(
+            source, fp16=False, language=self.language
+        )
         transcript = str(transcription.get("text", ""))
         return compare_transcript(transcript, expected_word)
