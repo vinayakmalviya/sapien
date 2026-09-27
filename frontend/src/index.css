@@ -155,3 +155,13 @@
     @apply font-sans;
     }
 }
+
+/* Used by ScoringState (Milestone 5) for an indeterminate progress sweep. */
+@keyframes scoring-sweep {
+  0% {
+    left: -33%;
+  }
+  100% {
+    left: 100%;
+  }
+}

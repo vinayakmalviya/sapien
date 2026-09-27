@@ -2,22 +2,40 @@ import { useEffect, type RefObject } from "react";
 
 /**
  * Shows the video element. Milestone 3 adds `LandmarkOverlay` on top of it.
- * The same `videoRef` is later shared with `useFaceLandmarker` and
- * `useFrameSampler` — MediaPipe and the frame sampler both accept any
- * `<video>` element.
+ *
+ * Accepts a live webcam `MediaStream` (`stream`) or a file clip's URL
+ * (`fileUrl`) — Milestone 6's `useVideoSource` picks which one to pass.
+ * `useFaceLandmarker` and `useFrameSampler` both read from the same
+ * `videoRef` regardless of which source fills it.
  */
 export function CameraFeed({
   stream,
+  fileUrl,
   videoRef,
 }: {
   stream: MediaStream | null;
+  fileUrl?: string | null;
   videoRef: RefObject<HTMLVideoElement | null>;
 }) {
   useEffect(() => {
-    if (videoRef.current) {
-      videoRef.current.srcObject = stream;
+    const video = videoRef.current;
+    if (!video) return;
+
+    if (fileUrl) {
+      video.srcObject = null;
+      if (video.getAttribute("src") !== fileUrl) {
+        video.src = fileUrl;
+      }
+      video.loop = true;
+      video.play().catch(() => {
+        // Autoplay can be blocked before a user gesture. The candidate
+        // has already pressed "Start interview" by the time this runs.
+      });
+    } else {
+      video.removeAttribute("src");
+      video.srcObject = stream;
     }
-  }, [stream, videoRef]);
+  }, [stream, fileUrl, videoRef]);
 
   return (
     <video

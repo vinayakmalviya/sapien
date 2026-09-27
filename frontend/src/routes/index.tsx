@@ -12,6 +12,7 @@ import {
 import { ConsoleShell } from "@/components/console/ConsoleShell";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { Switch } from "@/components/ui/switch";
 import { storeSessionBootstrap } from "@/lib/sessionBootstrap";
 
 export const Route = createFileRoute("/")({
@@ -42,11 +43,13 @@ function LauncherPage() {
   const navigate = useNavigate();
   const startSession = useStartSession();
   const [candidateId, setCandidateId] = useState("demo-candidate-1");
+  const [useSyntheticClip, setUseSyntheticClip] = useState(false);
 
   async function handleStart() {
     const [result] = await Promise.all([
       startSession.mutateAsync({ candidate_id: candidateId }),
-      primeCameraPermission(),
+      // A file source needs no camera permission — skip priming for it.
+      useSyntheticClip ? Promise.resolve() : primeCameraPermission(),
     ]);
 
     // The candidate window has no other way to learn prompt 1. Both
@@ -61,7 +64,12 @@ function LauncherPage() {
     // The interview surface opens in its own window. The console stays in
     // the current window. Section 5 of frontend-handoff.md: no join code,
     // no QR code — a link is enough, both surfaces run on one machine.
-    window.open(`/interview/${result.session_id}`, "_blank");
+    // Milestone 6: ?source=file plays the prepared MP4 clip instead of the
+    // webcam — the synthetic-candidate demo path.
+    const interviewUrl = useSyntheticClip
+      ? `/interview/${result.session_id}?source=file`
+      : `/interview/${result.session_id}`;
+    window.open(interviewUrl, "_blank");
     navigate({ to: "/console/$sessionId", params: { sessionId: result.session_id } });
   }
 
@@ -92,6 +100,21 @@ function LauncherPage() {
                 the synthetic verdict path.
               </p>
             </div>
+            <div className="flex items-center justify-between rounded-lg border border-neutral-800 px-3 py-2.5">
+              <div className="flex flex-col">
+                <Label htmlFor="synthetic-clip" className="text-neutral-200">
+                  Use synthetic candidate clip
+                </Label>
+                <span className="text-xs text-neutral-500">
+                  Plays a prepared MP4 instead of the webcam
+                </span>
+              </div>
+              <Switch
+                id="synthetic-clip"
+                checked={useSyntheticClip}
+                onCheckedChange={setUseSyntheticClip}
+              />
+            </div>
             <Button
               size="lg"
               onClick={handleStart}
@@ -100,7 +123,7 @@ function LauncherPage() {
               {startSession.isPending ? "Starting…" : "Start session"}
             </Button>
             {startSession.isError ? (
-              <p className="text-sm text-verdict-synthetic">
+              <p className="text-sm text-red-400">
                 {startSession.error.message}
               </p>
             ) : null}

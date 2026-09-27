@@ -6,18 +6,30 @@ import { CountdownRing } from "@/components/candidate/CountdownRing";
 import { LandmarkOverlay } from "@/components/candidate/LandmarkOverlay";
 import { PermissionGate } from "@/components/candidate/PermissionGate";
 import { PromptCard } from "@/components/candidate/PromptCard";
+import { SessionCompleteCard } from "@/components/candidate/SessionCompleteCard";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { useSessionRunner } from "@/session/useSessionRunner";
 
+interface InterviewSearch {
+  /** ?source=file plays the prepared MP4 clip instead of the webcam. Milestone 6. */
+  source?: "webcam" | "file";
+}
+
 export const Route = createFileRoute("/interview/$sessionId")({
+  validateSearch: (search: Record<string, unknown>): InterviewSearch => ({
+    source: search.source === "file" ? "file" : "webcam",
+  }),
   component: InterviewPage,
 });
 
 function InterviewPage() {
   const { sessionId } = Route.useParams();
-  const { state, mediaStream, videoRef, landmarker, start } =
-    useSessionRunner(sessionId);
+  const { source } = Route.useSearch();
+  const { state, videoSource, videoRef, landmarker, start } = useSessionRunner(
+    sessionId,
+    source,
+  );
 
   if (state.status === "idle") {
     return (
@@ -26,7 +38,7 @@ function InterviewPage() {
           <CardHeader>
             <CardTitle>Ready to begin?</CardTitle>
           </CardHeader>
-          <CardContent className="flex flex-col gap-4 text-sm text-slate-600">
+          <CardContent className="flex flex-col gap-4 text-base text-slate-600">
             <p>
               This interview uses your camera and microphone. Press Start
               when you are ready.
@@ -47,7 +59,7 @@ function InterviewPage() {
           <CardHeader>
             <CardTitle>Something went wrong</CardTitle>
           </CardHeader>
-          <CardContent className="text-sm text-slate-600">
+          <CardContent className="text-base text-slate-600">
             {state.errorMessage}
           </CardContent>
         </Card>
@@ -58,25 +70,21 @@ function InterviewPage() {
   if (state.status === "complete") {
     return (
       <CandidateShell>
-        {/* SessionCompleteCard proper arrives in Milestone 6. Must never show a score. */}
-        <Card className="w-full max-w-lg">
-          <CardHeader>
-            <CardTitle>Thank you</CardTitle>
-          </CardHeader>
-          <CardContent className="text-sm text-slate-600">
-            Your interview is complete. You may close this window.
-          </CardContent>
-        </Card>
+        <SessionCompleteCard />
       </CandidateShell>
     );
   }
 
   return (
     <CandidateShell>
-      <PermissionGate status={mediaStream.status} error={mediaStream.error}>
+      <PermissionGate status={videoSource.status} error={videoSource.error}>
         <div className="flex w-full max-w-3xl flex-col items-center gap-6">
           <div className="relative">
-            <CameraFeed videoRef={videoRef} stream={mediaStream.stream} />
+            <CameraFeed
+              videoRef={videoRef}
+              stream={videoSource.stream}
+              fileUrl={videoSource.fileUrl}
+            />
             <LandmarkOverlay
               videoRef={videoRef}
               rawLandmarksRef={landmarker.rawLandmarksRef}
@@ -103,7 +111,7 @@ function InterviewPage() {
           ) : null}
 
           {state.status === "uploading" ? (
-            <p className="text-sm text-slate-500">Submitting…</p>
+            <p className="text-base text-slate-500">Submitting…</p>
           ) : null}
         </div>
       </PermissionGate>

@@ -1,12 +1,14 @@
 # Frontend Progress — Sapien
 
-**Status:** Milestones 0 and 1 are complete. Milestones 2 through 7 are open.
+**Status:** Milestones 0 through 6 are complete. Milestone 7 is open, and is optional.
 **Audience:** Any developer or agent session that continues the Sapien frontend build.
-**Prerequisite reading:** `docs/frontend-handoff.md` and `docs/ui-contract.md`. This document does not repeat their rules. This document reports what exists now, and gives the exact next step for each open milestone.
+**Prerequisite reading:** `docs/frontend-handoff.md` and `docs/ui-contract.md`. This document does not repeat their rules. This document reports what exists now, and gives the exact next step for the one open milestone.
 
 This document follows **ASD-STE100 (Simplified Technical English)**. Each sentence gives one instruction or one fact.
 
 A new session can read this document and continue the build. Prior chat history is not needed.
+
+See also `docs/frontend-deferred-fixes.md` — a living list of known, non-urgent issues, each with its root cause and its exact fix. Check it before starting new work; it may already explain something you notice.
 
 ---
 
@@ -20,11 +22,11 @@ Do not run a git command. The project owner runs git commands. Stop and ask if a
 
 Keep every threshold and every limit in `frontend/src/scoring/constants.ts`. Do not write a number inline in a component.
 
-The accent colour lives in one place: `frontend/src/index.css`, in the `--brand-accent` variable. Section 4 of this document gives the exact line. Do not add a second colour definition elsewhere.
+The accent colour lives in one place: `frontend/src/index.css`, in the `--brand-accent` variable. Do not add a second colour definition elsewhere.
 
 ---
 
-## 2. What is built (Milestones 0 and 1)
+## 2. What is built (Milestones 0 through 6)
 
 ### 2.1 Project setup
 
@@ -36,15 +38,21 @@ Node version 22.17.0 is pinned in `frontend/.nvmrc`.
 
 `frontend/vite.config.ts` holds the Tailwind plugin, the TanStack Router plugin, the `@` path alias to `frontend/src`, the fixed port `5173`, and the `/api` proxy to `http://localhost:8000`.
 
-`frontend/.env.development` holds `VITE_API_BASE_URL=/api` and `VITE_USE_MOCK_API=true`.
+`frontend/.env.development` holds `VITE_API_BASE_URL=/api` and `VITE_USE_MOCK_API=true`. **This flag is still `true`.** No `backend/` folder exists in this repository yet. Nobody has confirmed a real request against a real backend. Flip this flag, and confirm the flip, once a backend exists at `http://localhost:8000`.
 
-The MediaPipe assets are already in place. `frontend/public/mediapipe/wasm/` holds the WASM files. `frontend/public/mediapipe/face_landmarker.task` holds the model file. Both load from the local path already. No milestone needs to fetch these again.
+The MediaPipe assets are in place: `frontend/public/mediapipe/wasm/` and `frontend/public/mediapipe/face_landmarker.task`. Both load from the local path.
 
-The MSW worker script exists at `frontend/public/mockServiceWorker.js`.
+### 2.2 A known shadcn CLI bug
 
-### 2.2 The accent colour
+Running `pnpm dlx shadcn@latest add <component>` writes new files to a literal folder named `@` at the repository root, for example `frontend/@/components/ui/card.tsx`. Move each new file into `frontend/src/components/ui/` by hand after the command runs, then delete the stray `frontend/@` folder. Run this check after every `shadcn add` command:
 
-The colour decision is not final. The colour lives in exactly one place, so a change is a one-line edit.
+```bash
+find . -maxdepth 1 -name "@"
+```
+
+### 2.3 The accent colour and the reserved verdict colours
+
+The colour decision is not final. The accent colour lives in exactly one place:
 
 ```css
 /* frontend/src/index.css */
@@ -54,9 +62,9 @@ The colour decision is not final. The colour lives in exactly one place, so a ch
 }
 ```
 
-`--primary` and `--ring` read from `--brand-accent`, in both the light theme and the dark theme blocks of `frontend/src/index.css`. Every shadcn component that uses `--primary` or `--ring` therefore follows this one variable. A Tailwind utility class also exists: `bg-brand`, `text-brand`, `border-brand`.
+`--primary` and `--ring` read from `--brand-accent`, in both the light and dark theme blocks. Utility classes `bg-brand`, `text-brand`, `border-brand` are available.
 
-Three more colours are already defined, and are reserved for the verdict only. Section 9.1 of `frontend-handoff.md` states this rule.
+Three more colours are reserved for the verdict only (Section 9.1 of `frontend-handoff.md`):
 
 ```css
 --verdict-real: oklch(0.6 0.16 155);        /* emerald */
@@ -64,179 +72,99 @@ Three more colours are already defined, and are reserved for the verdict only. S
 --verdict-uncertain: oklch(0.75 0.16 75);   /* amber */
 ```
 
-Tailwind utility classes exist for these too: `text-verdict-real`, `bg-verdict-synthetic`, and so on. Milestone 6 is the first milestone that should use them.
-
-### 2.3 A known shadcn CLI bug
-
-Running `pnpm dlx shadcn@latest add <component>` writes new files to a literal folder named `@` at the repository root, for example `frontend/@/components/ui/card.tsx`. This is wrong. The command must place the file under `frontend/src/`.
-
-Move each new file into `frontend/src/components/ui/` by hand after the command runs. Delete the stray `frontend/@` folder afterward. Run this check after every `shadcn add` command:
-
-```bash
-find . -maxdepth 1 -name "@"
-```
+**`SignalVerdict` (Section 2.8) is the only component in the whole app allowed to use `text-verdict-real` / `text-verdict-synthetic` / `text-verdict-uncertain`.** Two real violations of this rule were found and fixed during the build — a generic form error on the launcher, and a generic network error on the console, both once used `text-verdict-synthetic` for an unrelated red colour. Check any new error state against this rule before shipping it.
 
 ### 2.4 The API layer
 
-`frontend/src/api/types.ts` holds every type from `docs/ui-contract.md`. This includes `Prompt`, `EnabledModules`, `MotionDetail`, `CaptureMeta`, every request and response body, the error object, and the `FlagReasonCode` and `ApiErrorCode` enums. A helper function `isKnownPromptType` is ready for Milestone 8's registry rejection rule (Section 13 of `frontend-handoff.md`).
+`frontend/src/api/types.ts` holds every type from `docs/ui-contract.md`.
 
-`frontend/src/api/client.ts` holds the one fetch wrapper, `apiRequest`. Every API call must go through this function. It reads `VITE_API_BASE_URL`. It throws a typed `ApiError` for a non-2xx response, with the `code` field from Section 3.4 of `docs/ui-contract.md`.
+`frontend/src/api/client.ts` holds the one fetch wrapper, `apiRequest`. Every API call goes through this function.
 
-`frontend/src/api/queries.ts` holds four TanStack Query hooks:
-- `useStartSession` — a mutation for `POST /start-session`.
-- `useSubmitResponse` — a mutation for `POST /submit-response`.
-- `useSessionStatus` — a query for `GET /session-status`. Polls once each second. Used by the console route already.
-- `useGetResult` — a query for `GET /get-result`. Retries a `409 RESULT_NOT_READY` response up to 10 times, with a 500ms delay. Does not retry any other error.
+`frontend/src/api/queries.ts` holds four TanStack Query hooks: `useStartSession`, `useSubmitResponse`, `useSessionStatus` (polls once a second), `useGetResult` (retries a `409 RESULT_NOT_READY`, nothing else).
+
+**The operator console reads the final result from `useSessionStatus`'s embedded `result` field, not from a second `useGetResult` call.** Section 6.1 of `ui-contract.md` states both routes return the same data, and that the operator surface does not need a second call. `useGetResult` exists and is correct, and is free to use if a future screen needs the result without already polling `session-status`.
 
 ### 2.5 The mock backend
 
-`frontend/src/mocks/handlers.ts` holds a full in-memory mock backend, not only static fixtures. It runs behind MSW, in the browser, when `VITE_USE_MOCK_API=true`.
+`frontend/src/mocks/handlers.ts` is a full in-memory mock backend behind MSW, not only static fixtures.
 
-The mock backend:
-- Creates a session on `POST /start-session`. Stores it in a `Map`, keyed by a generated UUID.
-- Validates prompt order on `POST /submit-response`. Returns `409 PROMPT_OUT_OF_ORDER` for a wrong index, and `409 SESSION_ALREADY_COMPLETE` for a session that already finished.
-- Generates a mock `liveness_score`, `frame_score`, and `voice_score` for each prompt.
-- Sets the session status to `"scoring"` after the last prompt, waits 1200ms, then sets the status to `"complete"` and computes the final result. This lets the console show a `scoring` state, not only a frozen panel followed by a sudden answer.
-- Renormalizes the Decision Engine weights over the enabled modules, following Section 8 of `docs/ui-contract.md`.
-- Reads `GET /session-status` and `GET /get-result` from the same in-memory record.
+**Its session store is backed by `localStorage`, not a plain `Map`.** The launcher and the candidate interview run in two different browser tabs, each with its own JS module instance — a `Map` in one tab is invisible to the other. This was a real bug, found while testing Milestone 2's full two-window flow, not a theoretical concern.
 
-**The mock backend picks a "real" or "synthetic" profile from the candidate label.** A candidate label that contains the word "synthetic" (any case) gets the synthetic fixture. Every other label gets the real fixture. Type `synthetic-demo` on the launcher screen to see the synthetic path.
+The mock backend picks a `"real"` or `"synthetic"` profile from the candidate label at `start-session` time: a label containing the word "synthetic" (any case) gets the synthetic fixture; every other label gets the real fixture. It renormalizes weights over enabled modules (Section 8 of `ui-contract.md`), and holds `status: "scoring"` for ~1.2 seconds after the last prompt before completing, so the console's `ScoringState` has something real to show.
 
-`frontend/src/mocks/fixtures.ts` holds the two fixtures — `REAL_RESULT_FIXTURE` and `SYNTHETIC_RESULT_FIXTURE` — plus the demo prompt set (`DEMO_PROMPTS`), the thresholds (`MOCK_THRESHOLDS`), and the base weights (`MOCK_BASE_WEIGHTS`). These match the Section 7.1 example in `docs/ui-contract.md` exactly.
-
-**When a teammate's backend is ready:** set `VITE_USE_MOCK_API=false` in `frontend/.env.development`. Do not delete the mock files. Section 11 of `frontend-handoff.md` keeps MSW as a fallback for the demo.
+`frontend/src/mocks/fixtures.ts` holds the demo prompt set, the thresholds, the base weights, and the two result fixtures — matching the Section 7.1 example in `ui-contract.md` exactly.
 
 ### 2.6 Routes
 
-All four routes from Section 5 of `frontend-handoff.md` exist and render:
+All four routes render, and now carry real content:
 
 | Route | File | State |
 |---|---|---|
-| `/` | `frontend/src/routes/index.tsx` | The launcher. Calls `useStartSession`, opens the interview window, navigates to the console. |
-| `/interview/$sessionId` | `frontend/src/routes/interview.$sessionId.tsx` | A placeholder card inside `CandidateShell`. No camera yet. |
-| `/console/$sessionId` | `frontend/src/routes/console.$sessionId.tsx` | Polls `useSessionStatus`. Shows the raw status and the prompt count inside `ConsoleShell`. No score bars yet. |
-| `/console/$sessionId/settings` | `frontend/src/routes/console.$sessionId.settings.tsx` | A stub. Milestone 7 fills this in. |
+| `/` | `routes/index.tsx` | The launcher. Starts a session, primes the camera permission, stores the first prompt for the candidate window (Section 2.7), opens the interview window, and has a switch for the synthetic-candidate MP4 path (Section 2.9). |
+| `/interview/$sessionId` | `routes/interview.$sessionId.tsx` | The full candidate flow: idle → permission → calibration → 3 prompts (camera + mesh overlay + countdown) → `SessionCompleteCard`, or an error card. Reads `?source=file` to switch to the MP4 clip. |
+| `/console/$sessionId` | `routes/console.$sessionId.tsx` | The full operator flow: live status badge, latency badge, session timeline, scoring state, and — once the result arrives — `SignalVerdict`, `ConfidenceGauge`, `FlagReasonCard`, and `ComponentScorePanel`. |
+| `/console/$sessionId/settings` | `routes/console.$sessionId.settings.tsx` | Still a stub. Milestone 7. |
 
-`frontend/src/routes/__root.tsx` holds the one `QueryClientProvider`. Every route sits under it.
+### 2.7 The session bootstrap bridge
 
-### 2.7 The two surface shells
+`POST /start-session` returns the first prompt to the operator surface only. The candidate window opens fresh, at a URL with no prompt data in it (Section 5 of `frontend-handoff.md`: no join code, no QR code).
 
-`frontend/src/components/candidate/CandidateShell.tsx` gives the candidate surface its ordinary ATS look: light background, a fake company header, a fake job title, a fake interviewer name. The fake identity constants live in `frontend/src/lib/fakeCompany.ts`.
+`frontend/src/lib/sessionBootstrap.ts` bridges this gap with `localStorage`, shared by both tabs on the same origin. The launcher writes `{ totalPrompts, enabledModules, firstPrompt }` right after `start-session` succeeds. `useSessionRunner` reads it back once calibration finishes.
 
-`frontend/src/components/console/ConsoleShell.tsx` gives the operator surface its security-console look: a dark background, a session ID badge, and the brand accent as a status dot.
+### 2.8 The session runner, the scoring layer, and the capture layer
 
-Every future candidate component goes in `frontend/src/components/candidate/`. Every future console component goes in `frontend/src/components/console/`. This split is already in place. Follow it.
+`frontend/src/session/machine.ts` — the 9-state reducer from Section 7 of `frontend-handoff.md`.
 
-### 2.8 Directories already created, still empty
+`frontend/src/session/useSessionRunner.ts` — drives the machine, calls the API, and now sends a **real, full request body**: a real score and real `motion_detail` from the scorer registry, two real sampled frames, and a real recorded audio clip (`null` for a prompt with no expected word).
 
-These directories exist and are ready for the milestones below. An empty directory does not appear in git; do not worry about that.
+`frontend/src/scoring/` — `types.ts` (`LandmarkSample` / `LandmarkWindow`), `constants.ts` (every threshold, named, with a reason), `scorers.ts` (one function for each `prompt.type`, matching the Section 8 table), `registry.ts` (maps `prompt.type` to its scorer, throws `UnknownPromptTypeError` for anything else).
 
-```
-frontend/src/capture/
-frontend/src/scoring/
-frontend/src/session/
-```
+`frontend/src/capture/`:
+- `useMediaStream.ts` — camera and mic permission states. Requests `640x480` with `frameRate: { ideal: 30, max: 30 }` — a real fix for a real bug (see `frontend-deferred-fixes.md` entry 1 for the one part of this that is *not* fully fixed).
+- `useFaceLandmarker.ts` — the detection loop. Runs on `requestVideoFrameCallback` (falls back to a `currentTime`-deduped `requestAnimationFrame` loop where unsupported). Never sets React state inside the loop; publishes a snapshot 8 times a second. GPU delegate with a CPU fallback, verified against a real headless run.
+- `useFrameSampler.ts` — canvas → base64 JPEG, 640px wide, quality 0.8, no `data:` prefix.
+- `useAudioRecorder.ts` — `MediaRecorder` → base64, reports the browser's actual negotiated MIME type.
+- `useVideoSource.ts` — Milestone 6. Switches between the webcam (`useMediaStream`) and a prepared MP4 file. See Section 2.9 — **no MP4 file has been added yet.**
+
+Candidate components in `frontend/src/components/candidate/`: `CameraFeed`, `PermissionGate`, `PromptCard`, `CountdownRing`, `CalibrationHint`, `LandmarkOverlay`, `SessionCompleteCard` (shows no score, by construction — it takes no score-shaped prop at all).
+
+Console components in `frontend/src/components/console/`: `SessionTimeline`, `ScoreBar`, `ComponentScorePanel`, `LatencyBadge`, `ScoringState`, `SignalVerdict`, `ConfidenceGauge`, `FlagReasonCard`.
+
+One contract gap worth knowing about: `thresholds` in `ui-contract.md` Section 7.1 has no liveness-specific value — only `frame_fake`, `voice_real`, `voice_fake`. `ComponentScorePanel`'s liveness bar therefore draws no threshold marker; its caption shows `prompts_passed`/`prompts_total` instead of inventing a number. The voice bar draws two markers (`voice_real` and `voice_fake`), framing Section 15.3's uncertain band.
+
+### 2.9 The synthetic-candidate video path — MP4 file missing
+
+`useVideoSource` expects a file at `frontend/public/media/synthetic-candidate.mp4`. **This file does not exist in the repository.** `frontend/public/media/README.md` documents the exact filename and the two things the clip needs (a visible face, for calibration to pass; H.264 in an MP4 container).
+
+The launcher has a "Use synthetic candidate clip" switch, wired end to end — it opens `/interview/$sessionId?source=file`, and `CameraFeed` will attempt to play whatever is at that path. Until the file is added, this path shows a broken video and calibration never completes (there is no face to detect). This is expected, not a bug in the code.
+
+**Adding the clip and confirming this path end to end is the most useful thing a future session could do before Milestone 6 is fully demo-ready.**
+
+### 2.10 Legibility
+
+Section 9.2 of `frontend-handoff.md` sets a 16px floor for body text and a 72px floor for verdict text, reasoned specifically for the operator console (a judge reads it from 3 metres away, through a projector). Every console-facing body text size was audited and bumped to `text-base` (16px) or above; `SignalVerdict` renders at 80px. The candidate surface was not held to this rule — it is read up close by the candidate, not projected, and Section 9.2's own reasoning does not apply to it. Small print there (the fake company header/footer) is left alone and is arguably good for realism.
 
 ---
 
-## 3. Open milestones
-
-Each section below gives the goal, the files to add, and the done-when check. Read the matching section of `docs/frontend-handoff.md` before starting — this document gives the plan, that document gives the full rule set.
-
-### Milestone 2 — Candidate surface, mock scoring
-
-**Goal:** the candidate answers three prompts with a fixed score. The session reaches `complete`.
-
-Add:
-- `frontend/src/session/machine.ts` — the reducer from Section 7 of `frontend-handoff.md`. Nine states: `idle`, `requesting_permission`, `calibrating`, `prompt_shown`, `recording`, `uploading`, `next_prompt`, `complete`, `error`.
-- `frontend/src/session/useSessionRunner.ts` — drives the machine. Calls `useStartSession` and `useSubmitResponse` from `frontend/src/api/queries.ts`. Sends a fixed `landmark_motion_score` of `0.9` for every prompt. Fill `motion_detail` with placeholder numbers; Milestone 3 replaces them.
-- `frontend/src/capture/useMediaStream.ts` — calls `getUserMedia`. Reports `idle`, `prompting`, `granted`, `denied`.
-- `frontend/src/components/candidate/CameraFeed.tsx` — shows the video element.
-- `frontend/src/components/candidate/PermissionGate.tsx` — shows the camera permission state.
-- `frontend/src/components/candidate/PromptCard.tsx` — shows `instruction` and `expected_word`. Read `prompt.type` for logic. Do not read `instruction` for logic (Section 13 of `frontend-handoff.md`).
-- `frontend/src/components/candidate/CountdownRing.tsx` — shows the time left in the recording window.
-
-Wire these into `frontend/src/routes/interview.$sessionId.tsx`, replacing the placeholder card.
-
-**Done when:** the candidate answers three prompts in the browser. The session reaches `complete`. The camera shows the live feed. The network tab shows three `POST /submit-response` calls (check against the mock, or the real backend once available).
-
-### Milestone 3 — MediaPipe and real scoring
-
-**Goal:** replace the fixed score with a real one, from the face landmarker.
-
-Add:
-- `frontend/src/capture/useFaceLandmarker.ts` — the `requestAnimationFrame` loop. Follow Section 6.1 of `frontend-handoff.md` exactly: the loop writes to a ref, never to React state; the hook publishes a snapshot 8 times each second; `outputFaceBlendshapes: true`; `outputFacialTransformationMatrixes: true`; GPU delegate with a CPU fallback; model path `/mediapipe/face_landmarker.task` (already in `public/`).
-- `frontend/src/components/candidate/LandmarkOverlay.tsx` — draws the face mesh on a canvas above the video. This component has no effect on the score. It is visible proof that the check is running.
-- `frontend/src/components/candidate/CalibrationHint.tsx` — tells the candidate to centre the face. Feeds the `calibrating` state in the machine.
-- `frontend/src/scoring/constants.ts` — every threshold, named, with a comment for the reason. Start from the table in Section 8 of `frontend-handoff.md`: 18 degrees of yaw for a full head-turn score, a jaw-open variance of 0.01 for a full speak-word score, 2 blinks for a full blink score, and the 0.25 `tracking_loss_ratio` penalty line.
-- `frontend/src/scoring/scorers.ts` — one function for each `prompt.type`: `head_turn_right`, `head_turn_left`, `speak_word`, `blink`. Each function returns a score from `0.0` to `1.0`, and a full `motion_detail` object with all seven fields filled.
-- `frontend/src/scoring/registry.ts` — maps `prompt.type` to the matching scorer. Throws or returns an error state for any other value. Use `isKnownPromptType` from `frontend/src/api/types.ts` for the check.
-
-Update `useSessionRunner` to call the registry instead of sending the fixed `0.9` value.
-
-**Done when:** the mesh draws on the candidate's face. A head turn raises the score. A still head lowers the score. The frame rate stays above 20, measured with the browser's performance panel.
-
-### Milestone 4 — Capture and submit
-
-**Goal:** send a real, full request body to `POST /submit-response`. This is the milestone that unblocks backend testing — see Section 5 of this document.
-
-Add:
-- `frontend/src/capture/useFrameSampler.ts` — draws the current video frame to a canvas, returns a base64 JPEG string, no `data:` prefix, 640px wide, quality `0.8`. Two frames for each prompt: one at 40% of the window, one at 80%.
-- `frontend/src/capture/useAudioRecorder.ts` — records the microphone with `MediaRecorder`. Returns a base64 string and the exact MIME type (WebM, Opus codec). Returns `null` for a prompt with no `expected_word`.
-
-Update `useSessionRunner` to collect the frames, the audio clip, and `capture_meta`, and to send the full body shape from Section 5.1 of `docs/ui-contract.md`.
-
-At the end of this milestone, set `VITE_USE_MOCK_API=false` in `frontend/.env.development` and confirm the request reaches a real backend at `http://localhost:8000` through the Vite proxy.
-
-**Done when:** the network tab shows a full `POST /submit-response` body. Every field matches `docs/ui-contract.md`. This is the point where a teammate's Frame Classifier, Voice Detection, or Liveness Scorer module can receive a real request from the browser.
-
-### Milestone 5 — Console
-
-**Goal:** the operator surface shows live progress during a real candidate session, in the second window.
-
-Add:
-- `frontend/src/components/console/SessionTimeline.tsx` — shows the state of each of the three prompts. Read from `useSessionStatus`'s `completed_prompts` array, already wired into `frontend/src/routes/console.$sessionId.tsx`.
-- `frontend/src/components/console/ScoreBar.tsx` — one component score and its threshold marker. Read the threshold value from the API response's `thresholds` field. Do not hold this value in frontend code (Section 7.2 of `docs/ui-contract.md`).
-- `frontend/src/components/console/ComponentScorePanel.tsx` — groups three `ScoreBar` instances.
-- `frontend/src/components/console/LatencyBadge.tsx` — shows `latency_ms` from the last `prompt_result`.
-- `frontend/src/components/console/ScoringState.tsx` — a progress state shown while `status` is `"scoring"`.
-
-Replace the placeholder text in `frontend/src/routes/console.$sessionId.tsx` with these components.
-
-**Done when:** the console fills in each score during a live candidate session, in the second browser window. This is the point where a teammate can watch their model's output land in the UI without reading the network tab.
-
-### Milestone 6 — Verdict and demo controls
-
-**Goal:** the final signal shows in large, legible type. The synthetic video path works.
-
-Add:
-- `frontend/src/components/console/SignalVerdict.tsx` — REAL or SYNTHETIC, at least 72px. Use `text-verdict-real` or `text-verdict-synthetic` from `frontend/src/index.css`. Read `useGetResult`.
-- `frontend/src/components/console/ConfidenceGauge.tsx` — the combined `confidence` value.
-- `frontend/src/components/console/FlagReasonCard.tsx` — maps each `FlagReasonCode` (in `frontend/src/api/types.ts`) to a readable sentence. Show the raw code beside the sentence.
-- `frontend/src/capture/useVideoSource.ts` — returns a `<video>` source, either `webcam` or `file` (a prepared MP4 clip). Both source types must run through the same `useFaceLandmarker` and `useFrameSampler` code path.
-- `frontend/src/components/candidate/SessionCompleteCard.tsx` — thanks the candidate. Must not show a score.
-
-Apply the legibility rules from Section 9.2 of `frontend-handoff.md`: body text at least 16px, verdict text at least 72px, no font weight under 400.
-
-**Done when:** a real webcam run reads REAL. An MP4 run reads SYNTHETIC, with a flag reason shown. Both verdicts are readable from 3 metres away, on a projector.
+## 3. The one open milestone
 
 ### Milestone 7 — Module toggles (optional)
 
 **Goal:** the operator can turn a detection module off before the session starts.
 
 Add:
-- `frontend/src/components/console/ModuleToggleRow.tsx` — one switch for one module (`liveness`, `frame`, `voice`).
+- `frontend/src/components/console/ModuleToggleRow.tsx` — one switch for one module (`liveness`, `frame`, `voice`). A `Switch` component from shadcn already exists at `frontend/src/components/ui/switch.tsx` (added in Milestone 6 for the launcher's synthetic-clip toggle) — reuse it.
 - Wire three switches into `frontend/src/routes/console.$sessionId.settings.tsx`, replacing the stub card.
-- Send the chosen `enabled_modules` object in the `POST /start-session` call, from `frontend/src/routes/index.tsx`. This requires moving the toggle state up to the launcher, or adding a second step before the launcher opens the two windows.
+- The `enabled_modules` object needs to reach `POST /start-session`, which the launcher (`routes/index.tsx`) calls, not the settings route. Either move the three switches up to the launcher itself, or add a step before the launcher opens the two windows where the operator visits settings first, then starts. The settings route today takes a `sessionId` param that does not exist until after `start-session` runs — this ordering problem is the main design decision for this milestone, not the switch UI itself.
 
-**Done when:** the operator turns the voice module off before starting a session. The result shows `null` for `voice_score` and for `component_scores.voice_detection`.
+**Done when:** the operator turns the voice module off before starting a session. The result shows `null` for `voice_score` and for `component_scores.voice_detection`. The mock backend in `mocks/handlers.ts` already renormalizes weights correctly for a disabled module (Section 2.5) — this milestone is frontend wiring only, not a backend change.
 
 ---
 
 ## 4. Priority note for backend testing
 
-A teammate testing a backend module against real frontend traffic needs Milestones 2, 3, and 4 finished, in that order. Milestone 4 is the one that produces a real request body. Milestone 5 is not required to send traffic, but it makes the traffic easy to watch. Milestones 6 and 7 are not required for backend testing.
+Milestones 2 through 4 are what produce real request traffic; Milestone 5 makes it observable. All four are complete. A teammate with a real backend at `http://localhost:8000` can flip `VITE_USE_MOCK_API=false` today and should get fully contract-shaped requests. Nobody has confirmed this against a real server yet — see Section 2.1.
 
 ---
 
-*This document tracks build progress only. `docs/frontend-handoff.md` and `docs/ui-contract.md` remain the source of truth for every rule. Project: Sapien. Built for Origin Weekend, Fall 2026.*
+*This document tracks build progress only. `docs/frontend-handoff.md` and `docs/ui-contract.md` remain the source of truth for every rule. `docs/frontend-deferred-fixes.md` tracks known non-urgent issues. Project: Sapien. Built for Origin Weekend, Fall 2026.*

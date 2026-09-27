@@ -4,7 +4,7 @@ import type { CaptureMeta } from "@/api/types";
 import { useAudioRecorder, type RecordedAudio } from "@/capture/useAudioRecorder";
 import { useFaceLandmarker } from "@/capture/useFaceLandmarker";
 import { useFrameSampler } from "@/capture/useFrameSampler";
-import { useMediaStream } from "@/capture/useMediaStream";
+import { useVideoSource, type VideoSourceType } from "@/capture/useVideoSource";
 import { readSessionBootstrap } from "@/lib/sessionBootstrap";
 import {
   FRAME_SAMPLE_TIMING_1,
@@ -31,10 +31,17 @@ const EMPTY_WINDOW: LandmarkWindow = {
  * Milestone 4: two real sampled frames and a real recorded audio clip
  * (when the prompt has an expected word) go into every
  * `POST /submit-response` call. Section 6.4 and 6.5 of frontend-handoff.md.
+ *
+ * Milestone 6: `sourceType` picks the webcam or the prepared MP4 clip of
+ * the synthetic candidate (Section 6.3). A file source never records
+ * audio — there is no live microphone paired with a prerecorded clip.
  */
-export function useSessionRunner(sessionId: string) {
+export function useSessionRunner(
+  sessionId: string,
+  sourceType: VideoSourceType = "webcam",
+) {
   const [state, dispatch] = useReducer(sessionReducer, initialSessionState);
-  const mediaStream = useMediaStream();
+  const videoSource = useVideoSource(sourceType);
   const submitResponse = useSubmitResponse();
   const videoRef = useRef<HTMLVideoElement>(null);
   const landmarker = useFaceLandmarker(videoRef);
@@ -54,21 +61,21 @@ export function useSessionRunner(sessionId: string) {
   useEffect(() => {
     if (state.status !== "requesting_permission") return;
     let cancelled = false;
-    mediaStream.requestAccess().then((granted) => {
+    videoSource.requestAccess().then((granted) => {
       if (cancelled) return;
       if (granted) {
         dispatch({ type: "PERMISSION_GRANTED" });
       } else {
         dispatch({
           type: "FATAL_ERROR",
-          message: mediaStream.error ?? "Camera access was denied.",
+          message: videoSource.error ?? "Camera access was denied.",
         });
       }
     });
     return () => {
       cancelled = true;
     };
-    // mediaStream.requestAccess is stable (useCallback with no deps).
+    // videoSource.requestAccess is stable (useCallback with no deps).
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [state.status]);
 
@@ -117,8 +124,8 @@ export function useSessionRunner(sessionId: string) {
 
     const shouldRecordAudio = prompt.expected_word !== null;
     isRecordingAudioRef.current =
-      shouldRecordAudio && mediaStream.stream
-        ? audioRecorder.startRecording(mediaStream.stream)
+      shouldRecordAudio && videoSource.stream
+        ? audioRecorder.startRecording(videoSource.stream)
         : false;
 
     const frameTimer1 = setTimeout(() => {
@@ -171,13 +178,14 @@ export function useSessionRunner(sessionId: string) {
       return;
     }
 
-    const videoTrack = mediaStream.stream?.getVideoTracks()[0];
-    const settings = videoTrack?.getSettings();
+    // Read dimensions from the video element itself, not from a
+    // MediaStreamTrack — the element is the one thing both source types
+    // (webcam and file) always have. Section 6.3 of frontend-handoff.md.
     const window = pendingWindowRef.current;
     const captureMeta: CaptureMeta = {
       duration_ms: Date.now() - promptStartedAtRef.current,
-      video_width: settings?.width ?? 640,
-      video_height: settings?.height ?? 480,
+      video_width: videoRef.current?.videoWidth || 640,
+      video_height: videoRef.current?.videoHeight || 480,
       landmarker_fps:
         window.framesAnalyzed > 0
           ? Number(
@@ -231,7 +239,7 @@ export function useSessionRunner(sessionId: string) {
     dispatch({ type: "SHOW_NEXT_PROMPT" });
   }, [state.status]);
 
-  return { state, mediaStream, videoRef, landmarker, start };
+  return { state, videoSource, videoRef, landmarker, start };
 }
 
 function captureDurationSeconds(window: LandmarkWindow): number {
