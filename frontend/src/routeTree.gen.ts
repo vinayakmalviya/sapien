@@ -10,33 +10,76 @@
 
 import { Route as rootRouteImport } from './routes/__root'
 import { Route as IndexRouteImport } from './routes/index'
+import { Route as ConsoleSessionIdRouteImport } from './routes/console.$sessionId'
+import { Route as InterviewSessionIdRouteImport } from './routes/interview.$sessionId'
+import { Route as ConsoleSessionIdSettingsRouteImport } from './routes/console.$sessionId.settings'
 
 const IndexRoute = IndexRouteImport.update({
   id: '/',
   path: '/',
   getParentRoute: () => rootRouteImport,
 } as any)
+const ConsoleSessionIdRoute = ConsoleSessionIdRouteImport.update({
+  id: '/console/$sessionId',
+  path: '/console/$sessionId',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const InterviewSessionIdRoute = InterviewSessionIdRouteImport.update({
+  id: '/interview/$sessionId',
+  path: '/interview/$sessionId',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const ConsoleSessionIdSettingsRoute =
+  ConsoleSessionIdSettingsRouteImport.update({
+    id: '/settings',
+    path: '/settings',
+    getParentRoute: () => ConsoleSessionIdRoute,
+  } as any)
 
 export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
+  '/console/$sessionId': typeof ConsoleSessionIdRouteWithChildren
+  '/interview/$sessionId': typeof InterviewSessionIdRoute
+  '/console/$sessionId/settings': typeof ConsoleSessionIdSettingsRoute
 }
 export interface FileRoutesByTo {
   '/': typeof IndexRoute
+  '/console/$sessionId': typeof ConsoleSessionIdRouteWithChildren
+  '/interview/$sessionId': typeof InterviewSessionIdRoute
+  '/console/$sessionId/settings': typeof ConsoleSessionIdSettingsRoute
 }
 export interface FileRoutesById {
   __root__: typeof rootRouteImport
   '/': typeof IndexRoute
+  '/console/$sessionId': typeof ConsoleSessionIdRouteWithChildren
+  '/interview/$sessionId': typeof InterviewSessionIdRoute
+  '/console/$sessionId/settings': typeof ConsoleSessionIdSettingsRoute
 }
 export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
-  fullPaths: '/'
+  fullPaths:
+    | '/'
+    | '/console/$sessionId'
+    | '/interview/$sessionId'
+    | '/console/$sessionId/settings'
   fileRoutesByTo: FileRoutesByTo
-  to: '/'
-  id: '__root__' | '/'
+  to:
+    | '/'
+    | '/console/$sessionId'
+    | '/interview/$sessionId'
+    | '/console/$sessionId/settings'
+  id:
+    | '__root__'
+    | '/'
+    | '/console/$sessionId'
+    | '/interview/$sessionId'
+    | '/console/$sessionId/settings'
   fileRoutesById: FileRoutesById
 }
 export interface RootRouteChildren {
   IndexRoute: typeof IndexRoute
+  ConsoleSessionIdRoute: typeof ConsoleSessionIdRouteWithChildren
+  InterviewSessionIdRoute: typeof InterviewSessionIdRoute
 }
 
 declare module '@tanstack/react-router' {
@@ -48,11 +91,45 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof IndexRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/console/$sessionId': {
+      id: '/console/$sessionId'
+      path: '/console/$sessionId'
+      fullPath: '/console/$sessionId'
+      preLoaderRoute: typeof ConsoleSessionIdRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/interview/$sessionId': {
+      id: '/interview/$sessionId'
+      path: '/interview/$sessionId'
+      fullPath: '/interview/$sessionId'
+      preLoaderRoute: typeof InterviewSessionIdRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/console/$sessionId/settings': {
+      id: '/console/$sessionId/settings'
+      path: '/settings'
+      fullPath: '/console/$sessionId/settings'
+      preLoaderRoute: typeof ConsoleSessionIdSettingsRouteImport
+      parentRoute: typeof ConsoleSessionIdRoute
+    }
   }
 }
 
+interface ConsoleSessionIdRouteChildren {
+  ConsoleSessionIdSettingsRoute: typeof ConsoleSessionIdSettingsRoute
+}
+
+const ConsoleSessionIdRouteChildren: ConsoleSessionIdRouteChildren = {
+  ConsoleSessionIdSettingsRoute: ConsoleSessionIdSettingsRoute,
+}
+
+const ConsoleSessionIdRouteWithChildren =
+  ConsoleSessionIdRoute._addFileChildren(ConsoleSessionIdRouteChildren)
+
 const rootRouteChildren: RootRouteChildren = {
   IndexRoute: IndexRoute,
+  ConsoleSessionIdRoute: ConsoleSessionIdRouteWithChildren,
+  InterviewSessionIdRoute: InterviewSessionIdRoute,
 }
 export const routeTree = rootRouteImport
   ._addFileChildren(rootRouteChildren)
