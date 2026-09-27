@@ -21,9 +21,18 @@ import {
 } from "./fixtures";
 
 // ---------------------------------------------------------------------------
-// In-memory session store.
-// This is the entire "backend" in mock mode. Section 10 of handoff.md:
-// an in-memory dictionary is enough, session lifetime is 1 hour, no database.
+// Session store.
+//
+// This is the entire "backend" in mock mode. Section 10 of handoff.md: an
+// in-memory dictionary is enough, session lifetime is 1 hour, no database.
+//
+// It is backed by `localStorage`, not a plain in-memory `Map`. The launcher
+// and the candidate interview run in two different browser tabs. Each tab
+// runs its own copy of this module, in its own JS heap — a plain `Map`
+// would not be visible from the other tab. `localStorage` is shared by
+// every tab on the same origin, which is exactly the demo's setup (Section
+// 1 of handoff.md: one machine, two windows). This mirrors the same bridge
+// `src/lib/sessionBootstrap.ts` uses for the first prompt.
 // ---------------------------------------------------------------------------
 
 interface SessionRecord {
@@ -40,7 +49,24 @@ interface SessionRecord {
   profile: "real" | "synthetic";
 }
 
-const sessions = new Map<string, SessionRecord>();
+const STORAGE_KEY_PREFIX = "sapien:mock-session:";
+
+function loadSession(sessionId: string): SessionRecord | undefined {
+  const raw = localStorage.getItem(`${STORAGE_KEY_PREFIX}${sessionId}`);
+  if (!raw) return undefined;
+  try {
+    return JSON.parse(raw) as SessionRecord;
+  } catch {
+    return undefined;
+  }
+}
+
+function saveSession(session: SessionRecord): void {
+  localStorage.setItem(
+    `${STORAGE_KEY_PREFIX}${session.session_id}`,
+    JSON.stringify(session),
+  );
+}
 
 const DEFAULT_ENABLED_MODULES: EnabledModules = {
   liveness: true,
@@ -187,7 +213,7 @@ export const handlers = [
       result: null,
       profile: pickProfile(candidateId),
     };
-    sessions.set(sessionId, session);
+    saveSession(session);
 
     return HttpResponse.json({
       session_id: sessionId,
@@ -203,7 +229,7 @@ export const handlers = [
   // -------------------------------------------------------------------------
   http.post("/api/submit-response", async ({ request }) => {
     const body = (await request.json()) as SubmitResponseRequest;
-    const session = sessions.get(body.session_id);
+    const session = loadSession(body.session_id);
 
     if (!session) {
       return HttpResponse.json(
@@ -248,6 +274,7 @@ export const handlers = [
 
     if (!isLastPrompt) {
       session.status = "in_progress";
+      saveSession(session);
       const response: SubmitResponseResponse = {
         session_id: session.session_id,
         status: "in_progress",
@@ -261,9 +288,11 @@ export const handlers = [
 
     // Last prompt. Report "scoring" to session-status while we "run the model".
     session.status = "scoring";
+    saveSession(session);
     await sleep(SCORING_DELAY_MS);
     session.result = buildResult(session);
     session.status = "complete";
+    saveSession(session);
 
     const response: SubmitResponseResponse = {
       session_id: session.session_id,
@@ -281,7 +310,7 @@ export const handlers = [
   // -------------------------------------------------------------------------
   http.get("/api/session-status", ({ request }) => {
     const sessionId = new URL(request.url).searchParams.get("session_id");
-    const session = sessionId ? sessions.get(sessionId) : undefined;
+    const session = sessionId ? loadSession(sessionId) : undefined;
 
     if (!sessionId) {
       return HttpResponse.json(
@@ -315,7 +344,7 @@ export const handlers = [
   // -------------------------------------------------------------------------
   http.get("/api/get-result", ({ request }) => {
     const sessionId = new URL(request.url).searchParams.get("session_id");
-    const session = sessionId ? sessions.get(sessionId) : undefined;
+    const session = sessionId ? loadSession(sessionId) : undefined;
 
     if (!sessionId) {
       return HttpResponse.json(
