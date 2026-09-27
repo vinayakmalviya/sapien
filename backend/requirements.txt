@@ -1,7 +1,10 @@
 fastapi
 uvicorn[standard]
 python-multipart
-transformers
 torch
+torchvision
+huggingface-hub
+safetensors
+kagglehub
 pillow
 numpy

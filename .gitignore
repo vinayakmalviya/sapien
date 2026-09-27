@@ -34,6 +34,10 @@ checkpoints/
 *.pth
 *.pt
 
+# Local evaluation datasets and reports
+/backend/test/
+/backend/evaluation_results/
+
 # Frontend dependencies and build outputs
 node_modules/
 .vite/
