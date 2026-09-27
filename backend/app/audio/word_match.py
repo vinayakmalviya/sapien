@@ -22,11 +22,38 @@ NUMBER_WORDS.update(
         )
     }
 )
+WORD_ALIASES = {"harbour": "harbor"}
+TENS = {
+    "twenty": 20,
+    "thirty": 30,
+    "forty": 40,
+    "fifty": 50,
+    "sixty": 60,
+    "seventy": 70,
+    "eighty": 80,
+    "ninety": 90,
+}
 
 
 def normalize_words(text: str) -> list[str]:
     tokens = re.findall(r"[a-z0-9']+", text.casefold())
-    return [NUMBER_WORDS.get(token, token) for token in tokens]
+    normalized: list[str] = []
+    index = 0
+    while index < len(tokens):
+        token = WORD_ALIASES.get(tokens[index], tokens[index])
+        if token in TENS and index + 1 < len(tokens):
+            next_token = tokens[index + 1]
+            is_unit = (
+                next_token in NUMBER_WORDS
+                and 1 <= int(NUMBER_WORDS[next_token]) <= 9
+            )
+            if is_unit:
+                normalized.append(str(TENS[token] + int(NUMBER_WORDS[next_token])))
+                index += 2
+                continue
+        normalized.append(NUMBER_WORDS.get(token, token))
+        index += 1
+    return normalized
 
 
 def compare_transcript(transcript: str, expected_word: str) -> WordMatchResult:

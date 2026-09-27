@@ -1,27 +1,29 @@
-import asyncio
 import os
 import shutil
 from contextlib import asynccontextmanager
 from dataclasses import asdict
 from pathlib import Path
-from tempfile import NamedTemporaryFile
 from typing import AsyncIterator
 
 from fastapi import FastAPI, File, Form, HTTPException, UploadFile
 from fastapi.concurrency import run_in_threadpool
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.exceptions import RequestValidationError
+from fastapi.responses import JSONResponse
 from dotenv import load_dotenv
 
+from app.audio.analysis import (
+    ALLOWED_AUDIO_SUFFIXES,
+    MAX_AUDIO_BYTES,
+    analyze_audio_bytes,
+)
 from app.audio.voice_detection import VoiceDetector
 from app.audio.word_match import WordMatcher
-from vendor.vishield.training.features import SR, AudioValidationError, decode_audio
+from app.session_api import ApiProblem, create_session_router, error_body
+from vendor.vishield.training.features import AudioValidationError
 
 
 load_dotenv()
-
-MAX_AUDIO_BYTES = 25 * 1024 * 1024
-MAX_AUDIO_SECONDS = 30
-ALLOWED_AUDIO_SUFFIXES = {".flac", ".m4a", ".mp3", ".ogg", ".wav", ".webm"}
 
 voice_detector = VoiceDetector()
 word_matcher = WordMatcher(model_name=os.getenv("SAPIEN_WHISPER_MODEL", "base"))
@@ -43,6 +45,23 @@ app.add_middleware(
     allow_methods=["GET", "POST", "OPTIONS"],
     allow_headers=["Content-Type"],
 )
+app.include_router(create_session_router(voice_detector, word_matcher))
+
+
+@app.exception_handler(ApiProblem)
+async def handle_api_problem(_, problem: ApiProblem) -> JSONResponse:
+    return JSONResponse(status_code=problem.status, content=error_body(problem))
+
+
+@app.exception_handler(RequestValidationError)
+async def handle_validation_error(_, error: RequestValidationError) -> JSONResponse:
+    problem = ApiProblem(
+        400,
+        "VALIDATION_ERROR",
+        "The request body is invalid.",
+        error.errors(),
+    )
+    return JSONResponse(status_code=400, content=error_body(problem))
 
 
 @app.get("/health")
@@ -73,32 +92,22 @@ async def submit_audio(
     if len(audio_bytes) > MAX_AUDIO_BYTES:
         raise HTTPException(status_code=413, detail="The audio clip exceeds 25 MB.")
 
-    temporary_path: Path | None = None
     try:
-        with NamedTemporaryFile(suffix=suffix, delete=False) as temporary_file:
-            temporary_file.write(audio_bytes)
-            temporary_path = Path(temporary_file.name)
-
-        audio = await run_in_threadpool(decode_audio, temporary_path)
-        if audio.size > SR * MAX_AUDIO_SECONDS:
-            raise HTTPException(
-                status_code=413,
-                detail=f"The audio clip exceeds {MAX_AUDIO_SECONDS} seconds.",
-            )
-
-        voice_result, word_result = await asyncio.gather(
-            run_in_threadpool(voice_detector.detect, audio),
-            run_in_threadpool(word_matcher.match, audio, expected_word),
+        voice_result, word_result = await analyze_audio_bytes(
+            audio_bytes,
+            suffix,
+            expected_word,
+            voice_detector,
+            word_matcher,
         )
     except AudioValidationError as exc:
         raise HTTPException(status_code=422, detail=str(exc)) from exc
     except ValueError as exc:
         raise HTTPException(status_code=422, detail=str(exc)) from exc
+    except OverflowError as exc:
+        raise HTTPException(status_code=413, detail=str(exc)) from exc
     except RuntimeError as exc:
         raise HTTPException(status_code=503, detail=str(exc)) from exc
-    finally:
-        if temporary_path is not None:
-            temporary_path.unlink(missing_ok=True)
 
     return {
         "voice_detection": {

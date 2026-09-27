@@ -1,4 +1,5 @@
 fastapi
+httpx
 joblib>=1.5
 librosa>=0.11
 numpy>=2.0

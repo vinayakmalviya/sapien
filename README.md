@@ -41,15 +41,15 @@ flowchart LR
     Decision --> Result[Recruiter result panel]
 ```
 
-The current branch implements the FastAPI layer and the complete audio path.
-The liveness, frame, session, and combined decision components will connect to
-the same API when the team branches are merged.
+The current branch implements the session API, browser liveness capture, audio
+authenticity, word matching, and the combined result. The frame classifier is
+disabled until that team module is merged.
 
 ### Audio request flow
 
 ```mermaid
 flowchart LR
-    Client[API client] -->|multipart audio + expected word| Endpoint[POST /submit-audio]
+    Client[React candidate view] -->|base64 WebM in session response| Endpoint[POST /submit-response]
     Endpoint --> Temp[Temporary audio file]
     Temp --> Preprocess[16 kHz mono + silence trim]
     Preprocess --> W2V[Wav2Vec2 layer 6 embedding]
@@ -58,8 +58,13 @@ flowchart LR
     Classifier --> Response[Deepfake and human scores]
     Whisper --> Match[Expected-word match]
     Match --> Response
-    Response --> Client
+    Response --> Session[In-memory session state]
+    Session --> Console[Recruiter console polling]
 ```
+
+`POST /submit-audio` remains available for isolated audio testing. The React
+session uses `POST /submit-response`. A high-confidence deepfake voice is a
+safety veto and cannot be outweighed by a liveness score.
 
 ## Getting started
 
@@ -73,7 +78,7 @@ later. The backend is verified with Python 3.13.
 Install Git.
 Install pip.
 Install FFmpeg.
-Install Node.js and pnpm.
+Install Node.js 22.17.0 and pnpm.
 
 ### Clone the repository
 
@@ -149,9 +154,9 @@ pnpm dev
 
 Open `http://localhost:5173`.
 
-The frontend currently uses its mock session API while the team session backend
-is being integrated. Set `VITE_USE_MOCK_API=false` in
-`frontend/.env.development` when the four session endpoints are ready.
+The frontend uses the live FastAPI session endpoints. Liveness and voice
+authenticity are enabled. The frame classifier stays disabled until that team
+module is merged.
 
 FastAPI's interactive API documentation is available at:
 
@@ -175,15 +180,16 @@ All requests go through the API layer. No detection service is called directly b
 |---|---|---|---|
 | GET | `/health` | Check whether both audio models loaded | Implemented |
 | POST | `/submit-audio` | Run voice authenticity and expected-word checks | Implemented |
-| POST | `/start-session` | Start a session and get the first prompt | Team integration |
-| POST | `/submit-response` | Submit a complete prompt response | Team integration |
-| GET | `/get-result` | Get the combined real or synthetic signal | Team integration |
+| POST | `/start-session` | Start a session and get the first prompt | Implemented |
+| POST | `/submit-response` | Submit a complete prompt response | Implemented |
+| GET | `/session-status` | Poll session progress and result | Implemented |
+| GET | `/get-result` | Get the combined real or synthetic signal | Implemented |
 
 Send a test audio request:
 
 ```bash
 curl -X POST http://localhost:8000/submit-audio \
-  -F "expected_word=orange" \
+  -F "expected_word=orange river seven bright morning" \
   -F "audio_clip=@sample.wav"
 ```
 
@@ -195,10 +201,12 @@ sapien/
   backend/
     app/
       audio/
+        analysis.py
         contracts.py
         voice_detection.py
         word_match.py
       main.py
+      session_api.py
     vendor/
       vishield/
         training/
@@ -222,7 +230,7 @@ Keep the model layer separate from the route layer in the backend. This makes it
 
 The audio module has two independent checks. Vishield returns the probability
 that a voice is synthetic. Whisper checks whether the candidate said the
-prompt's expected word.
+prompt's expected phrase.
 
 ## Out of scope for this weekend
 

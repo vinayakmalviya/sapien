@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useReducer, useRef } from "react";
+import { ApiError } from "@/api/client";
 import { useSubmitResponse } from "@/api/queries";
 import type { CaptureMeta } from "@/api/types";
 import { useAudioRecorder, type RecordedAudio } from "@/capture/useAudioRecorder";
@@ -221,6 +222,14 @@ export function useSessionRunner(
       })
       .catch((error: unknown) => {
         if (cancelled) return;
+        if (error instanceof ApiError && error.code === "AUDIO_TOO_SHORT") {
+          dispatch({
+            type: "RETRY_PROMPT",
+            message:
+              "We could not hear one full second of speech. Say the complete phrase clearly; recording will restart.",
+          });
+          return;
+        }
         dispatch({
           type: "FATAL_ERROR",
           message: error instanceof Error ? error.message : "Upload failed.",

@@ -62,6 +62,17 @@ class AudioServiceTests(unittest.TestCase):
         self.assertTrue(compare_transcript("Say 7 now", "seven").matched)
         self.assertTrue(compare_transcript("seven", "7").matched)
 
+    def test_word_match_accepts_whisper_spelling_variant(self) -> None:
+        self.assertTrue(compare_transcript("Say harbor now", "harbour").matched)
+
+    def test_word_match_normalizes_a_full_challenge_phrase(self) -> None:
+        result = compare_transcript(
+            "Silver harbor 24 quiet boats.",
+            "silver harbour twenty four quiet boats",
+        )
+
+        self.assertTrue(result.matched)
+
     def test_word_matcher_accepts_decoded_audio(self) -> None:
         matcher = WordMatcher(language="en")
         matcher._model = FakeWhisperModel()

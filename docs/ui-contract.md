@@ -44,9 +44,9 @@ The API returns this object in `POST /start-session` and in `POST /submit-respon
   "index": 1,
   "of": 3,
   "type": "head_turn_right",
-  "instruction": "Turn your head slightly to the right, then say 'orange'.",
-  "expected_word": "orange",
-  "duration_ms": 4000
+  "instruction": "Turn your head slightly to the right, then say 'orange river seven bright morning'.",
+  "expected_word": "orange river seven bright morning",
+  "duration_ms": 6000
 }
 ```
 
@@ -56,7 +56,7 @@ The API returns this object in `POST /start-session` and in `POST /submit-respon
 | `of` | integer | yes | The total number of prompts in the session. Set this value to `3`. |
 | `type` | string enum | yes | Selects the scorer function in the frontend. Section 3.2 lists the values. |
 | `instruction` | string | yes | The text on the candidate's screen. |
-| `expected_word` | string or null | yes | The word the candidate must speak. Set this field to `null` for a prompt with no spoken word. |
+| `expected_word` | string or null | yes | The challenge phrase the candidate must speak. Set this field to `null` for a prompt with no speech. |
 | `duration_ms` | integer | yes | The length of the recording window, in milliseconds. Use a value from `3000` to `6000`. |
 
 The frontend must not read the `instruction` field to find the prompt type. The frontend reads the `type` field only. A writer can then change the wording of an instruction. That change does not break the frontend.
@@ -76,8 +76,8 @@ Use this prompt set for the demo session:
 
 | Index | Type | Expected word |
 |---|---|---|
-| 1 | `head_turn_right` | `"orange"` |
-| 2 | `speak_word` | `"harbour"` |
+| 1 | `head_turn_right` | `"orange river seven bright morning"` |
+| 2 | `speak_word` | `"silver harbour twenty four quiet boats"` |
 | 3 | `blink` | `null` |
 
 ### 3.3 The `EnabledModules` object
@@ -144,9 +144,9 @@ The operator surface calls this endpoint. The candidate surface does not call th
     "index": 1,
     "of": 3,
     "type": "head_turn_right",
-    "instruction": "Turn your head slightly to the right, then say 'orange'.",
-    "expected_word": "orange",
-    "duration_ms": 4000
+    "instruction": "Turn your head slightly to the right, then say 'orange river seven bright morning'.",
+    "expected_word": "orange river seven bright morning",
+    "duration_ms": 6000
   }
 }
 ```
@@ -260,9 +260,9 @@ The field holds `null` when the prompt has no expected word. The `blink` prompt 
     "index": 2,
     "of": 3,
     "type": "speak_word",
-    "instruction": "Say the word 'harbour' now.",
-    "expected_word": "harbour",
-    "duration_ms": 4000
+    "instruction": "Say 'silver harbour twenty four quiet boats' now.",
+    "expected_word": "silver harbour twenty four quiet boats",
+    "duration_ms": 6000
   },
   "warnings": []
 }

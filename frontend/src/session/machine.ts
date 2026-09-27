@@ -39,6 +39,7 @@ export type SessionEvent =
   | { type: "CALIBRATED"; prompt: Prompt; totalPrompts: number }
   | { type: "LEAD_IN_COMPLETE" }
   | { type: "RECORDING_COMPLETE" }
+  | { type: "RETRY_PROMPT"; message: string }
   | { type: "UPLOAD_SUCCESS"; result: PromptResult; nextPrompt: Prompt | null }
   | { type: "SHOW_NEXT_PROMPT" }
   | { type: "FATAL_ERROR"; message: string }
@@ -77,11 +78,19 @@ export function sessionReducer(
 
     case "LEAD_IN_COMPLETE":
       if (state.status !== "prompt_shown") return state;
-      return { ...state, status: "recording" };
+      return { ...state, status: "recording", errorMessage: null };
 
     case "RECORDING_COMPLETE":
       if (state.status !== "recording") return state;
       return { ...state, status: "uploading" };
+
+    case "RETRY_PROMPT":
+      if (state.status !== "uploading") return state;
+      return {
+        ...state,
+        status: "prompt_shown",
+        errorMessage: event.message,
+      };
 
     case "UPLOAD_SUCCESS": {
       if (state.status !== "uploading") return state;

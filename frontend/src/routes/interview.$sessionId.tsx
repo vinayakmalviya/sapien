@@ -107,7 +107,17 @@ function InterviewPage() {
 
           {state.currentPrompt &&
           (state.status === "prompt_shown" || state.status === "recording") ? (
-            <PromptCard prompt={state.currentPrompt} />
+            <div className="flex w-full flex-col items-center gap-3">
+              {state.errorMessage ? (
+                <p
+                  role="alert"
+                  className="w-full max-w-lg rounded-md border border-amber-300 bg-amber-50 px-4 py-3 text-sm text-amber-900"
+                >
+                  {state.errorMessage}
+                </p>
+              ) : null}
+              <PromptCard prompt={state.currentPrompt} />
+            </div>
           ) : null}
 
           {state.status === "uploading" ? (
