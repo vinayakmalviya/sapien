@@ -47,10 +47,23 @@ async def lifespan(_: FastAPI) -> AsyncIterator[None]:
     yield
 
 
+# The deployed frontend origin(s), comma-separated, e.g.
+# "https://sapien.vercel.app,https://sapien-git-main.vercel.app". Local dev
+# origins are always allowed in addition, so this var is unset locally.
+_extra_origins = [
+    origin.strip()
+    for origin in os.getenv("SAPIEN_ALLOWED_ORIGINS", "").split(",")
+    if origin.strip()
+]
+
 app = FastAPI(title="Sapien API", version="0.1.0", lifespan=lifespan)
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["http://localhost:5173", "http://127.0.0.1:5173"],
+    allow_origins=[
+        "http://localhost:5173",
+        "http://127.0.0.1:5173",
+        *_extra_origins,
+    ],
     allow_methods=["GET", "POST", "OPTIONS"],
     allow_headers=["Content-Type"],
 )
