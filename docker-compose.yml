@@ -1,0 +1,41 @@
+version: "3"
+services:
+  api:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    image: sapien/backend:v1.0.0
+    container_name: sapien-api
+    restart: unless-stopped
+    networks:
+      - proxy
+    env_file: ./backend/.env
+    environment:
+      # Comma-separated. Add every Vercel URL the browser sends requests
+      # from (production domain + any preview deployments you test with).
+      - SAPIEN_ALLOWED_ORIGINS=https://sapien-nine.vercel.app
+    volumes:
+      # Whisper, Wav2Vec2, and the frame classifier all cache their
+      # downloaded weights under the container's home directory. Without
+      # this volume, every container recreate re-downloads them from
+      # scratch on the lifespan startup hook.
+      - sapien-model-cache:/root/.cache
+    labels:
+      - "traefik.enable=true"
+      - "traefik.http.routers.sapien-api.entrypoints=http"
+      - "traefik.http.routers.sapien-api.rule=Host(`sapien.citisafe.in`)"
+      - "traefik.http.middlewares.sapien-api-https-redirect.redirectscheme.scheme=https"
+      - "traefik.http.routers.sapien-api.middlewares=sapien-api-https-redirect"
+      - "traefik.http.routers.sapien-api-secure.entrypoints=https"
+      - "traefik.http.routers.sapien-api-secure.rule=Host(`sapien.citisafe.in`)"
+      - "traefik.http.routers.sapien-api-secure.tls=true"
+      - "traefik.http.routers.sapien-api-secure.service=sapien-api"
+      - "traefik.http.services.sapien-api.loadbalancer.server.port=8000"
+      - "traefik.docker.network=proxy"
+
+networks:
+  proxy:
+    external: true
+
+volumes:
+  sapien-model-cache:
