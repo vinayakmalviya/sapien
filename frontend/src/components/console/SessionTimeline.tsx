@@ -76,7 +76,9 @@ export function SessionTimeline({
                 <span>liveness {step.completed.liveness_score.toFixed(2)}</span>
               ) : null}
               {enabledModules.frame ? (
-                <span>frame {step.completed.frame_score.toFixed(2)}</span>
+                <span>
+                  frame {step.completed.frame_score?.toFixed(2) ?? "disabled"}
+                </span>
               ) : null}
               {enabledModules.voice ? (
                 <span>

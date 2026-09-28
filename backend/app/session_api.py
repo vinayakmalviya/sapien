@@ -9,6 +9,7 @@ from typing import Any, Literal
 from uuid import uuid4
 
 from fastapi import APIRouter
+from fastapi.concurrency import run_in_threadpool
 from pydantic import BaseModel, Field
 
 from app.audio.analysis import (
@@ -87,6 +88,7 @@ DECISION_THRESHOLD = 0.5
 FRAME_FAKE_THRESHOLD = 0.15
 VOICE_REAL_THRESHOLD = 0.65
 VOICE_FAKE_THRESHOLD = 0.35
+MAX_FRAME_BYTES = 2 * 1024 * 1024
 
 
 def now_iso() -> str:
@@ -138,7 +140,7 @@ class ApiProblem(Exception):
 
 class EnabledModules(BaseModel):
     liveness: bool = True
-    frame: bool = False
+    frame: bool = True
     voice: bool = True
 
 
@@ -253,12 +255,21 @@ def build_result(session: SessionRecord) -> dict[str, Any]:
         if item["voice_score"] is not None
     ]
     voice_score = fmean(voice_values) if enabled["voice"] and voice_values else None
+    frame_values = [
+        item.get("frame_score")
+        for item in completed
+        if item.get("frame_score") is not None
+    ]
+    frame_score = fmean(frame_values) if enabled["frame"] and frame_values else None
+    frames_scored = sum(item.get("frames_scored", 0) for item in completed)
 
     combined = 0.0
     if liveness_score is not None:
         combined += liveness_score * weights["liveness"]
     if voice_score is not None:
         combined += voice_score * weights["voice"]
+    if frame_score is not None:
+        combined += frame_score * weights["frame"]
 
     failures: list[str] = []
     if liveness_score is not None and liveness_score < DECISION_THRESHOLD:
@@ -268,6 +279,8 @@ def build_result(session: SessionRecord) -> dict[str, Any]:
             failures.append("voice_detection_deepfake")
         elif voice_score < VOICE_REAL_THRESHOLD:
             failures.append("voice_detection_uncertain")
+    if frame_score is not None and frame_score < FRAME_FAKE_THRESHOLD:
+        failures.append("frame_classifier_below_threshold")
     if session.scenario == "ats_interview" and any(
         item["word_match"] is False for item in completed
     ):
@@ -310,6 +323,8 @@ def build_result(session: SessionRecord) -> dict[str, Any]:
     ]
     forced_synthetic = challenge_failed or (
         voice_score is not None and voice_score < VOICE_FAKE_THRESHOLD
+    ) or (
+        frame_score is not None and frame_score < FRAME_FAKE_THRESHOLD
     )
     signal = (
         "synthetic"
@@ -325,6 +340,8 @@ def build_result(session: SessionRecord) -> dict[str, Any]:
             )
         if challenge_result["word_match"] is False:
             confidence = max(confidence, 0.9)
+    if frame_score is not None and frame_score < FRAME_FAKE_THRESHOLD:
+        confidence = max(confidence, 1.0 - frame_score)
 
     return {
         "session_id": session.session_id,
@@ -335,7 +352,9 @@ def build_result(session: SessionRecord) -> dict[str, Any]:
             "liveness_scorer": (
                 round(liveness_score, 2) if liveness_score is not None else None
             ),
-            "frame_classifier": None,
+            "frame_classifier": (
+                round(frame_score, 2) if frame_score is not None else None
+            ),
             "voice_detection": (
                 round(voice_score, 2) if voice_score is not None else None
             ),
@@ -350,9 +369,11 @@ def build_result(session: SessionRecord) -> dict[str, Any]:
                 "prompts_total": len(session.prompts),
             },
             "frame_classifier": {
-                "enabled": False,
-                "frames_scored": 0,
-                "mean_real_probability": 0.0,
+                "enabled": enabled["frame"],
+                "frames_scored": frames_scored,
+                "mean_real_probability": (
+                    round(frame_score, 2) if frame_score is not None else 0.0
+                ),
             },
             "voice_detection": {
                 "enabled": enabled["voice"],
@@ -389,6 +410,46 @@ def decode_audio_clip(body: SubmitResponseRequest) -> bytes:
         ) from exc
 
 
+def decode_frames(encoded_frames: list[str]) -> list[bytes]:
+    if not encoded_frames:
+        raise ApiProblem(
+            400,
+            "VALIDATION_ERROR",
+            "Frame classification requires at least one captured frame.",
+        )
+
+    decoded_frames: list[bytes] = []
+    for encoded in encoded_frames:
+        if len(encoded) > (MAX_FRAME_BYTES * 4 // 3) + 4:
+            raise ApiProblem(
+                413,
+                "VALIDATION_ERROR",
+                "A captured frame exceeds 2 MB.",
+            )
+        try:
+            frame = base64.b64decode(encoded, validate=True)
+        except (binascii.Error, ValueError) as exc:
+            raise ApiProblem(
+                400,
+                "FRAME_DECODE_FAILED",
+                "A captured frame is not valid base64.",
+            ) from exc
+        if not frame:
+            raise ApiProblem(
+                400,
+                "FRAME_DECODE_FAILED",
+                "A captured frame is empty.",
+            )
+        if len(frame) > MAX_FRAME_BYTES:
+            raise ApiProblem(
+                413,
+                "VALIDATION_ERROR",
+                "A captured frame exceeds 2 MB.",
+            )
+        decoded_frames.append(frame)
+    return decoded_frames
+
+
 def is_short_audio(error: Exception) -> bool:
     message = str(error).casefold()
     return "too short" in message or "no samples" in message
@@ -418,7 +479,11 @@ def activate_prompt(session: SessionRecord, index: int) -> dict[str, Any]:
     return session.prompts[index - 1]
 
 
-def create_session_router(voice_detector: Any, word_matcher: Any) -> APIRouter:
+def create_session_router(
+    voice_detector: Any,
+    word_matcher: Any,
+    frame_classifier: Any,
+) -> APIRouter:
     router = APIRouter()
     store = SessionStore()
 
@@ -426,12 +491,6 @@ def create_session_router(voice_detector: Any, word_matcher: Any) -> APIRouter:
     async def start_session(body: StartSessionRequest) -> dict[str, Any]:
         requested = body.enabled_modules or EnabledModules()
         enabled = requested.model_dump()
-        if enabled["frame"]:
-            raise ApiProblem(
-                503,
-                "MODEL_UNAVAILABLE",
-                "The frame classifier is not available on this branch yet.",
-            )
         renormalized_weights(enabled)
 
         prompts = (
@@ -500,7 +559,50 @@ def create_session_router(voice_detector: Any, word_matcher: Any) -> APIRouter:
         voice_score = None
         word_match = None
         transcript = None
+        frame_score = None
+        frame_detail = None
+        frames_scored = 0
         warnings: list[str] = []
+
+        if session.enabled_modules["frame"]:
+            frame_bytes = decode_frames(body.frames)
+            try:
+                frame_result = await run_in_threadpool(
+                    frame_classifier,
+                    frame_bytes,
+                )
+            except (OSError, TypeError, ValueError) as exc:
+                raise ApiProblem(
+                    400,
+                    "FRAME_DECODE_FAILED",
+                    "A captured frame is not a valid image.",
+                ) from exc
+            except RuntimeError as exc:
+                raise ApiProblem(503, "MODEL_UNAVAILABLE", str(exc)) from exc
+
+            avg_fake_score = frame_result.get("avg_fake_score")
+            if avg_fake_score is None:
+                raise ApiProblem(
+                    503,
+                    "MODEL_UNAVAILABLE",
+                    "The frame classifier returned no score.",
+                )
+            frame_score = round(1.0 - float(avg_fake_score), 4)
+            frames_scored = len(frame_result.get("frame_scores", []))
+            frame_detail = {
+                "average_fake_probability": round(float(avg_fake_score), 4),
+                "maximum_fake_probability": round(
+                    float(frame_result["max_fake_score"]),
+                    4,
+                ),
+                "volatility": round(float(frame_result["volatility"]), 4),
+                "face_detection_rate": round(
+                    float(frame_result["face_detection_rate"]),
+                    4,
+                ),
+            }
+            if frame_detail["face_detection_rate"] == 0:
+                warnings.append("no_face_in_captured_frames")
 
         if prompt["kind"] == "passive" and session.enabled_modules["voice"]:
             audio_bytes = decode_audio_clip(body)
@@ -545,7 +647,9 @@ def create_session_router(voice_detector: Any, word_matcher: Any) -> APIRouter:
         prompt_result = {
             "index": body.prompt_index,
             "liveness_score": round(body.landmark_motion_score, 4),
-            "frame_score": 0.0,
+            "frame_score": frame_score,
+            "frame_detail": frame_detail,
+            "frames_scored": frames_scored,
             "voice_score": voice_score,
             "word_match": word_match,
             "expected_phrase": prompt["expected_word"],

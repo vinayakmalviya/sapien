@@ -149,7 +149,10 @@ export interface SubmitResponseRequest {
 export interface PromptResult {
   index: number;
   liveness_score: number;
-  frame_score: number;
+  /** Real-image probability, or null when frame classification is disabled. */
+  frame_score: number | null;
+  frame_detail?: FrameDetail | null;
+  frames_scored?: number;
   /** null when the request sent no audio clip. */
   voice_score: number | null;
   /** null when the prompt has no expected word. */
@@ -188,13 +191,22 @@ export interface CompletedPromptSummary {
   type: PromptType;
   submitted_at: string;
   liveness_score: number;
-  frame_score: number;
+  frame_score: number | null;
+  frame_detail?: FrameDetail | null;
+  frames_scored?: number;
   voice_score: number | null;
   word_match: boolean | null;
   expected_phrase?: string | null;
   transcript?: string | null;
   latency_ms: number;
   kind: PromptKind;
+}
+
+export interface FrameDetail {
+  average_fake_probability: number;
+  maximum_fake_probability: number;
+  volatility: number;
+  face_detection_rate: number;
 }
 
 export interface SessionStatusResponse {

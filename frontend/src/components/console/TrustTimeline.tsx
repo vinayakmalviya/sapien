@@ -48,6 +48,9 @@ export function TrustTimeline({
             <span className="size-3 rounded-sm bg-neutral-500" /> voice
             authenticity
           </span>
+          <span className="flex items-center gap-2">
+            <span className="size-3 rounded-sm bg-neutral-300" /> frame
+          </span>
           {decisionThreshold !== null ? (
             <span className="flex items-center gap-2">
               <span className="h-px w-4 border-t border-dashed border-neutral-300" />
@@ -121,6 +124,13 @@ function SlotColumn({
               </span>
             ) : (
               <Bar score={completed.voice_score} className="bg-neutral-500" />
+            )}
+            {completed.frame_score === null ? (
+              <span className="w-4 pb-1 text-center text-base text-neutral-500">
+                —
+              </span>
+            ) : (
+              <Bar score={completed.frame_score} className="bg-neutral-300" />
             )}
           </>
         ) : null}

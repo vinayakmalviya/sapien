@@ -42,8 +42,7 @@ flowchart LR
 ```
 
 The current branch implements the session API, browser liveness capture, audio
-authenticity, word matching, and the combined result. The frame classifier is
-disabled until that team module is merged.
+authenticity, word matching, frame classification, and the combined result.
 
 ### Audio request flow
 
@@ -138,9 +137,10 @@ uvicorn app.main:app --reload
 
 The API server runs at `http://localhost:8000`.
 
-The first backend start downloads `facebook/wav2vec2-base` and the English-only
-Whisper `base.en` model. Later starts use the local model cache. Set
-`SAPIEN_WHISPER_MODEL=tiny` before startup if you need faster local inference.
+The first backend start downloads `facebook/wav2vec2-base`, the English-only
+Whisper `base.en` model, and the `dima806` image classifier. Later starts use
+the local model cache. Set `SAPIEN_WHISPER_MODEL=tiny` before startup if you
+need faster local inference.
 
 ### Frontend setup
 
@@ -154,9 +154,9 @@ pnpm dev
 
 Open `http://localhost:5173`.
 
-The frontend uses the live FastAPI session endpoints. Liveness and voice
-authenticity are enabled. The frame classifier stays disabled until that team
-module is merged.
+The frontend uses the live FastAPI session endpoints. Liveness, frame
+classification, and voice authenticity are enabled for ATS interviews and
+video calls.
 
 The launcher supports two scenarios:
 
@@ -195,7 +195,8 @@ All requests go through the API layer. No detection service is called directly b
 
 | Method | Path | Purpose | Status |
 |---|---|---|---|
-| GET | `/health` | Check whether both audio models loaded | Implemented |
+| GET | `/health` | Check whether all three inference models loaded | Implemented |
+| POST | `/classify-frame` | Classify one uploaded image for debugging | Implemented |
 | POST | `/submit-audio` | Run voice authenticity and expected-word checks | Implemented |
 | POST | `/start-session` | Start a session and get the first prompt | Implemented |
 | POST | `/submit-response` | Submit a complete prompt response | Implemented |

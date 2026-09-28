@@ -36,6 +36,20 @@ class SilentVoiceDetector:
         raise ValueError("Audio too short (minimum 1 second of speech)")
 
 
+class FakeFrameClassifier:
+    def __init__(self, fake_score: float = 0.1) -> None:
+        self.fake_score = fake_score
+
+    def __call__(self, frames: list[bytes]) -> dict:
+        return {
+            "avg_fake_score": self.fake_score,
+            "max_fake_score": self.fake_score,
+            "volatility": 0.0,
+            "frame_scores": [self.fake_score for _ in frames],
+            "face_detection_rate": 1.0,
+        }
+
+
 def wav_base64() -> str:
     buffer = io.BytesIO()
     with wave.open(buffer, "wb") as audio:
@@ -70,7 +84,10 @@ def response_body(
             "frames_analyzed": 100,
             "tracking_loss_ratio": 0.01,
         },
-        "frames": [],
+        "frames": [
+            base64.b64encode(b"frame-one").decode(),
+            base64.b64encode(b"frame-two").decode(),
+        ],
         "audio_clip": wav_base64() if include_audio else None,
         "audio_mime": "audio/wav" if include_audio else "",
         "capture_meta": {
@@ -85,12 +102,26 @@ def response_body(
 class SessionApiTests(unittest.TestCase):
     def setUp(self) -> None:
         self.word_matcher = FakeWordMatcher()
-        self.client = self.make_client(FakeVoiceDetector(), self.word_matcher)
+        self.frame_classifier = FakeFrameClassifier()
+        self.client = self.make_client(
+            FakeVoiceDetector(),
+            self.word_matcher,
+            self.frame_classifier,
+        )
 
-    def make_client(self, voice_detector, word_matcher) -> TestClient:
+    def make_client(
+        self,
+        voice_detector,
+        word_matcher,
+        frame_classifier=None,
+    ) -> TestClient:
         app = FastAPI()
         app.include_router(
-            create_session_router(voice_detector, word_matcher)
+            create_session_router(
+                voice_detector,
+                word_matcher,
+                frame_classifier or FakeFrameClassifier(),
+            )
         )
 
         @app.exception_handler(ApiProblem)
@@ -109,7 +140,7 @@ class SessionApiTests(unittest.TestCase):
         session = start.json()
         self.assertEqual(session["scenario"], "ats_interview")
         self.assertEqual(session["prompt"]["kind"], "scripted")
-        self.assertFalse(session["enabled_modules"]["frame"])
+        self.assertTrue(session["enabled_modules"]["frame"])
         self.assertEqual(session["prompt"]["duration_ms"], 6000)
         self.assertGreaterEqual(len(session["prompt"]["expected_word"].split()), 5)
 
@@ -132,6 +163,11 @@ class SessionApiTests(unittest.TestCase):
         self.assertEqual(len(status["completed_prompts"]), 3)
         self.assertEqual(status["result"]["signal"], "real")
         self.assertEqual(status["result"]["component_scores"]["voice_detection"], 0.9)
+        self.assertEqual(status["result"]["component_scores"]["frame_classifier"], 0.9)
+        self.assertEqual(
+            status["result"]["module_detail"]["frame_classifier"]["frames_scored"],
+            6,
+        )
 
         result = self.client.get(
             "/get-result", params={"session_id": session["session_id"]}
@@ -146,19 +182,29 @@ class SessionApiTests(unittest.TestCase):
         self.assertEqual(response.status_code, 404)
         self.assertEqual(response.json()["error"]["code"], "SESSION_NOT_FOUND")
 
-    def test_unavailable_frame_module_is_rejected(self) -> None:
-        response = self.client.post(
+    def test_frame_module_can_be_disabled(self) -> None:
+        started = self.client.post(
             "/start-session",
             json={
                 "enabled_modules": {
                     "liveness": True,
-                    "frame": True,
+                    "frame": False,
                     "voice": True,
                 }
             },
         )
-        self.assertEqual(response.status_code, 503)
-        self.assertEqual(response.json()["error"]["code"], "MODEL_UNAVAILABLE")
+        self.assertEqual(started.status_code, 200)
+        self.assertFalse(started.json()["enabled_modules"]["frame"])
+
+    def test_invalid_frame_is_rejected(self) -> None:
+        session = self.client.post("/start-session", json={}).json()
+        body = response_body(session["session_id"], 1, "head_turn_right")
+        body["frames"] = ["not-base64"]
+
+        response = self.client.post("/submit-response", json=body)
+
+        self.assertEqual(response.status_code, 400)
+        self.assertEqual(response.json()["error"]["code"], "FRAME_DECODE_FAILED")
 
     def test_deepfake_voice_cannot_be_outweighed_by_liveness(self) -> None:
         session = SessionRecord(
@@ -219,6 +265,10 @@ class SessionApiTests(unittest.TestCase):
         self.assertEqual(len(status["completed_prompts"]), 8)
         self.assertIsNotNone(status["rolling_result"])
         self.assertEqual(status["result"], status["rolling_result"])
+        self.assertEqual(
+            status["result"]["module_detail"]["frame_classifier"]["frames_scored"],
+            16,
+        )
 
     def test_operator_can_queue_one_call_challenge(self) -> None:
         session = self.client.post(
@@ -263,7 +313,11 @@ class SessionApiTests(unittest.TestCase):
         )
 
     def test_silent_passive_window_returns_a_warning(self) -> None:
-        client = self.make_client(SilentVoiceDetector(), FakeWordMatcher())
+        client = self.make_client(
+            SilentVoiceDetector(),
+            FakeWordMatcher(),
+            FakeFrameClassifier(),
+        )
         session = client.post(
             "/start-session", json={"scenario": "video_call"}
         ).json()
@@ -361,6 +415,31 @@ class SessionApiTests(unittest.TestCase):
             result["failure_reasons"],
             ["liveness_timing_mismatch", "challenge_failed"],
         )
+
+    def test_deepfake_frame_forces_a_synthetic_result(self) -> None:
+        session = SessionRecord(
+            session_id="frame-fake",
+            created_at="2026-09-27T00:00:00Z",
+            candidate_id="test",
+            enabled_modules={"liveness": True, "frame": True, "voice": True},
+            completed_prompts=[
+                {
+                    "kind": "scripted",
+                    "liveness_score": 1.0,
+                    "frame_score": 0.05,
+                    "frames_scored": 2,
+                    "voice_score": 1.0,
+                    "word_match": True,
+                }
+            ],
+        )
+
+        result = build_result(session)
+
+        self.assertEqual(result["signal"], "synthetic")
+        self.assertEqual(result["flag_reason"], "frame_classifier_below_threshold")
+        self.assertEqual(result["confidence"], 0.95)
+        self.assertEqual(result["component_scores"]["frame_classifier"], 0.05)
 
 
 if __name__ == "__main__":

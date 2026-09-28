@@ -19,7 +19,13 @@ from app.audio.analysis import (
 )
 from app.audio.voice_detection import VoiceDetector
 from app.audio.word_match import WordMatcher
-from app.frame_classifier import classify_frame, load_model
+from app.frame_classifier import (
+    classify_frame,
+    classify_frame_batch,
+    is_model_loaded,
+    load_model,
+    warm_up as warm_up_frame_classifier,
+)
 from app.session_api import ApiProblem, create_session_router, error_body
 from vendor.vishield.training.features import AudioValidationError
 
@@ -37,6 +43,7 @@ async def lifespan(_: FastAPI) -> AsyncIterator[None]:
     await run_in_threadpool(voice_detector.warm_up)
     await run_in_threadpool(word_matcher.warm_up)
     await run_in_threadpool(load_model)
+    await run_in_threadpool(warm_up_frame_classifier)
     yield
 
 
@@ -47,7 +54,9 @@ app.add_middleware(
     allow_methods=["GET", "POST", "OPTIONS"],
     allow_headers=["Content-Type"],
 )
-app.include_router(create_session_router(voice_detector, word_matcher))
+app.include_router(
+    create_session_router(voice_detector, word_matcher, classify_frame_batch)
+)
 
 
 @app.exception_handler(ApiProblem)
@@ -73,6 +82,7 @@ def health() -> dict[str, object]:
         "services": {
             "voice_detection": voice_detector.is_loaded,
             "word_match": word_matcher.is_loaded,
+            "frame_classifier": is_model_loaded(),
         },
         "ffmpeg": shutil.which("ffmpeg") is not None,
     }
@@ -121,10 +131,20 @@ async def submit_audio(
     }
 
 
-# dev
 @app.post("/classify-frame")
 async def classify_uploaded_frame(
     frame: Annotated[UploadFile, File(...)],
-):
-    frame_bytes = await frame.read()
-    return classify_frame(frame_bytes)
+) -> dict[str, float | bool]:
+    frame_bytes = await frame.read(2 * 1024 * 1024 + 1)
+    await frame.close()
+    if not frame_bytes:
+        raise HTTPException(status_code=400, detail="The frame is empty.")
+    if len(frame_bytes) > 2 * 1024 * 1024:
+        raise HTTPException(status_code=413, detail="The frame exceeds 2 MB.")
+    try:
+        return await run_in_threadpool(classify_frame, frame_bytes)
+    except (OSError, ValueError) as exc:
+        raise HTTPException(
+            status_code=422,
+            detail="The frame is not a valid image.",
+        ) from exc
