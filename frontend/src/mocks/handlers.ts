@@ -276,7 +276,11 @@ function buildRollingResult(session: SessionRecord): GetResultResponse {
     ? mean(completedPrompts.map((p) => p.liveness_score))
     : null;
   const frame = enabled_modules.frame
-    ? mean(completedPrompts.map((p) => p.frame_score))
+    ? mean(
+        completedPrompts
+          .map((p) => p.frame_score)
+          .filter((score): score is number => score !== null),
+      )
     : null;
   const voice = enabled_modules.voice
     ? mean(

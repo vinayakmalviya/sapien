@@ -144,7 +144,7 @@ Complete this step before Tier 1. Both scenarios need it.
 
 For the video call, the clip needs:
 - A visible, centred face. Calibration needs 5 frames with a face.
-- Synthetic audio, from a TTS tool or a voice clone. The voice check is the passive signal most likely to catch the clip. The frame classifier is off on the backend.
+- Synthetic audio, from a TTS tool or a voice clone. Voice authenticity and frame classification run during every window.
 - About 60 seconds of natural talk. The call takes about 50 seconds. `CameraFeed` loops the clip, but a visible loop looks false.
 - Ordinary interview talk. Do not put a challenge phrase in the script.
 - H.264 video in an MP4 container.

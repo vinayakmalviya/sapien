@@ -79,7 +79,7 @@ function LauncherPage() {
       startSession.mutateAsync({
         candidate_id: candidateId,
         scenario,
-        enabled_modules: { liveness: true, frame: false, voice: true },
+        enabled_modules: { liveness: true, frame: true, voice: true },
       }),
       useSyntheticClip ? Promise.resolve() : primeCameraPermission(),
     ]).catch((error) => {
@@ -167,8 +167,8 @@ function LauncherPage() {
                 className="border-neutral-700 bg-neutral-950 text-neutral-100"
               />
               <p className="text-xs text-neutral-500">
-                Audio authenticity and liveness scoring run against the live
-                FastAPI backend.
+                Audio authenticity, frame classification, and liveness scoring
+                run against the live FastAPI backend.
               </p>
             </div>
             <div className="flex items-start justify-between gap-4">
