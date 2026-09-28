@@ -1,0 +1,53 @@
+[project]
+name = "sapien-backend"
+version = "0.1.0"
+requires-python = ">=3.12"
+# Keep this list identical to requirements.txt (used for local `pip install`,
+# per the README). Two manifests that disagree is the one shape that breaks
+# Vercel's uv-based installer — it can silently install nothing.
+dependencies = [
+    "fastapi",
+    "httpx",
+    "joblib>=1.5",
+    "librosa>=0.11",
+    "numpy>=2.0",
+    "opencv-python-headless<4.12",
+    "openai-whisper",
+    "pillow",
+    "python-dotenv",
+    "python-multipart",
+    "scikit-learn==1.9.1",
+    "soundfile",
+    "torch>=2.5",
+    "transformers>=5.0",
+    "uvicorn[standard]",
+]
+
+# The plain PyPI `torch` wheel for Linux bundles the full CUDA stack
+# (cuBLAS, cuDNN, NCCL, ...) — several GB, and unused on Vercel's CPU-only
+# Python runtime. Route torch to the CPU-only wheel index on Linux instead.
+# macOS has no CUDA build to begin with, so it still resolves from PyPI.
+[[tool.uv.index]]
+name = "pytorch-cpu"
+url = "https://download.pytorch.org/whl/cpu"
+explicit = true
+
+[tool.uv.sources]
+torch = [{ index = "pytorch-cpu", marker = "sys_platform == 'linux'" }]
+
+# openai-whisper unconditionally requires triton>=2 on Linux x86_64 (236 MB),
+# even for CPU-only use. Triton only backs whisper's CUDA median-filter/DTW
+# kernels for word-level timestamps (whisper/timing.py, gated behind
+# `if x.is_cuda`) — dead code here, since word_match.py calls
+# model.transcribe(..., fp16=False) with no word_timestamps, entirely on
+# CPU. This override replaces the requirement with an impossible marker so
+# uv never installs it.
+#
+# This directory is also not an importable package (it holds `app`, `eval`,
+# and `vendor` as separate top-level folders) — it only needs its
+# dependencies resolved and installed. Without `package = false`,
+# uv/setuptools tries to build the project itself as a wheel and fails with
+# "Multiple top-level packages discovered in a flat-layout".
+[tool.uv]
+override-dependencies = ["triton; sys_platform == 'never'"]
+package = false
