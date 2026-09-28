@@ -152,6 +152,7 @@ export function useFaceLandmarker(videoRef: RefObject<HTMLVideoElement | null>) 
 
     let rafId: number | null = null;
     let vfcId: number | null = null;
+    let backgroundTimerId: number | null = null;
     let cancelled = false;
 
     function processFrame() {
@@ -241,10 +242,15 @@ export function useFaceLandmarker(videoRef: RefObject<HTMLVideoElement | null>) 
       rafId = requestAnimationFrame(loop);
     }
 
+    backgroundTimerId = window.setInterval(() => {
+      if (document.hidden) processFrame();
+    }, 500);
+
     return () => {
       cancelled = true;
       if (rafId !== null) cancelAnimationFrame(rafId);
       if (vfcId !== null && video) video.cancelVideoFrameCallback(vfcId);
+      if (backgroundTimerId !== null) window.clearInterval(backgroundTimerId);
     };
   }, [isReady, videoRef]);
 

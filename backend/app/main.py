@@ -27,7 +27,7 @@ from vendor.vishield.training.features import AudioValidationError
 load_dotenv()
 
 voice_detector = VoiceDetector()
-word_matcher = WordMatcher(model_name=os.getenv("SAPIEN_WHISPER_MODEL", "base"))
+word_matcher = WordMatcher(model_name=os.getenv("SAPIEN_WHISPER_MODEL", "base.en"))
 
 
 @asynccontextmanager

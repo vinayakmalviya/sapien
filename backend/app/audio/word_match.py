@@ -1,5 +1,6 @@
 import os
 import re
+from difflib import SequenceMatcher
 from pathlib import Path
 from typing import Any
 
@@ -33,6 +34,7 @@ TENS = {
     "eighty": 80,
     "ninety": 90,
 }
+FUZZY_PHRASE_THRESHOLD = 0.76
 
 
 def normalize_words(text: str) -> list[str]:
@@ -56,17 +58,47 @@ def normalize_words(text: str) -> list[str]:
     return normalized
 
 
+def ordered_word_overlap(expected: list[str], transcript: list[str]) -> int:
+    previous = [0] * (len(transcript) + 1)
+    for expected_word in expected:
+        current = [0]
+        for index, transcript_word in enumerate(transcript, start=1):
+            if expected_word == transcript_word:
+                current.append(previous[index - 1] + 1)
+            else:
+                current.append(max(current[-1], previous[index]))
+        previous = current
+    return previous[-1]
+
+
+def best_phrase_similarity(expected: list[str], transcript: list[str]) -> float:
+    expected_text = " ".join(expected)
+    best = 0.0
+    minimum_size = max(1, len(expected) - 1)
+    maximum_size = min(len(transcript), len(expected) + 1)
+    for size in range(minimum_size, maximum_size + 1):
+        for index in range(len(transcript) - size + 1):
+            candidate = " ".join(transcript[index : index + size])
+            best = max(best, SequenceMatcher(None, expected_text, candidate).ratio())
+    return best
+
+
 def compare_transcript(transcript: str, expected_word: str) -> WordMatchResult:
     expected_tokens = normalize_words(expected_word)
     if not expected_tokens:
         raise ValueError("Expected phrase cannot be empty.")
 
     transcript_tokens = normalize_words(transcript)
-    phrase_length = len(expected_tokens)
-    matched = any(
-        transcript_tokens[index : index + phrase_length] == expected_tokens
-        for index in range(len(transcript_tokens) - phrase_length + 1)
+    allowed_misses = 1 if len(expected_tokens) >= 5 else 0
+    required_words = len(expected_tokens) - allowed_misses
+    overlap = ordered_word_overlap(expected_tokens, transcript_tokens)
+    fuzzy_match = (
+        len(expected_tokens) >= 5
+        and overlap >= 2
+        and best_phrase_similarity(expected_tokens, transcript_tokens)
+        >= FUZZY_PHRASE_THRESHOLD
     )
+    matched = overlap >= required_words or fuzzy_match
     return WordMatchResult(
         matched=matched,
         expected_word=" ".join(expected_tokens),

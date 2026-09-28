@@ -20,7 +20,10 @@ export function FinalResult({ result }: { result: GetResultResponse }) {
         </CardContent>
       </Card>
 
-      <FlagReasonCard flagReason={result.flag_reason} />
+      <FlagReasonCard
+        flagReason={result.flag_reason}
+        failureReasons={result.failure_reasons}
+      />
 
       <Separator className="bg-neutral-800" />
 

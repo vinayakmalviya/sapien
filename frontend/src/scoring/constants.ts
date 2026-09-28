@@ -16,8 +16,8 @@
 export const GOOD_FRAMES_FOR_CALIBRATION = 5;
 
 /**
- * The lead-in before a scripted prompt or a challenge starts recording.
- * Section 7 of frontend-handoff.md. A passive window has no lead-in.
+ * The lead-in before a scripted ATS prompt starts recording. Call challenges
+ * record immediately so a candidate who responds at once is not missed.
  */
 export const LEAD_IN_MS = 2000;
 
@@ -95,6 +95,11 @@ export const PASSIVE_FULL_SCORE_BLINK_COUNT = 1;
  * candidate on its own.
  */
 export const PASSIVE_NO_BLINK_FACTOR = 0.6;
+
+/** Face presence is the main passive signal; normal candidates can sit still. */
+export const PASSIVE_PRESENCE_WEIGHT = 0.7;
+export const PASSIVE_MOTION_WEIGHT = 0.2;
+export const PASSIVE_BLINK_WEIGHT = 0.1;
 
 // ---------------------------------------------------------------------------
 // Operator console, video call. Section 5.3 of video-call-scenario.md.

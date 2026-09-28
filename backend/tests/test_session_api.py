@@ -12,6 +12,7 @@ from app.session_api import (
     ApiProblem,
     SessionRecord,
     build_result,
+    call_prompts,
     create_session_router,
     error_body,
 )
@@ -23,8 +24,16 @@ class FakeVoiceDetector:
 
 
 class FakeWordMatcher:
+    def __init__(self, matched: bool = True) -> None:
+        self.matched = matched
+
     def match(self, _, expected_word: str) -> WordMatchResult:
-        return WordMatchResult(True, expected_word, expected_word)
+        return WordMatchResult(self.matched, expected_word, expected_word)
+
+
+class SilentVoiceDetector:
+    def detect(self, _):
+        raise ValueError("Audio too short (minimum 1 second of speech)")
 
 
 def wav_base64() -> str:
@@ -37,12 +46,21 @@ def wav_base64() -> str:
     return base64.b64encode(buffer.getvalue()).decode()
 
 
-def response_body(session_id: str, index: int, prompt_type: str) -> dict:
+def response_body(
+    session_id: str,
+    index: int,
+    prompt_type: str,
+    *,
+    liveness_score: float = 0.9,
+    include_audio: bool | None = None,
+) -> dict:
+    if include_audio is None:
+        include_audio = index < 3
     return {
         "session_id": session_id,
         "prompt_index": index,
         "prompt_type": prompt_type,
-        "landmark_motion_score": 0.9,
+        "landmark_motion_score": liveness_score,
         "motion_detail": {
             "yaw_peak_degrees": 20.0,
             "yaw_direction": "right",
@@ -53,8 +71,8 @@ def response_body(session_id: str, index: int, prompt_type: str) -> dict:
             "tracking_loss_ratio": 0.01,
         },
         "frames": [],
-        "audio_clip": wav_base64() if index < 3 else None,
-        "audio_mime": "audio/wav" if index < 3 else "",
+        "audio_clip": wav_base64() if include_audio else None,
+        "audio_mime": "audio/wav" if include_audio else "",
         "capture_meta": {
             "duration_ms": 4000,
             "video_width": 640,
@@ -66,9 +84,13 @@ def response_body(session_id: str, index: int, prompt_type: str) -> dict:
 
 class SessionApiTests(unittest.TestCase):
     def setUp(self) -> None:
+        self.word_matcher = FakeWordMatcher()
+        self.client = self.make_client(FakeVoiceDetector(), self.word_matcher)
+
+    def make_client(self, voice_detector, word_matcher) -> TestClient:
         app = FastAPI()
         app.include_router(
-            create_session_router(FakeVoiceDetector(), FakeWordMatcher())
+            create_session_router(voice_detector, word_matcher)
         )
 
         @app.exception_handler(ApiProblem)
@@ -77,7 +99,7 @@ class SessionApiTests(unittest.TestCase):
                 status_code=problem.status, content=error_body(problem)
             )
 
-        self.client = TestClient(app)
+        return TestClient(app)
 
     def test_complete_live_session(self) -> None:
         start = self.client.post(
@@ -85,6 +107,8 @@ class SessionApiTests(unittest.TestCase):
         )
         self.assertEqual(start.status_code, 200)
         session = start.json()
+        self.assertEqual(session["scenario"], "ats_interview")
+        self.assertEqual(session["prompt"]["kind"], "scripted")
         self.assertFalse(session["enabled_modules"]["frame"])
         self.assertEqual(session["prompt"]["duration_ms"], 6000)
         self.assertGreaterEqual(len(session["prompt"]["expected_word"].split()), 5)
@@ -153,6 +177,190 @@ class SessionApiTests(unittest.TestCase):
 
         self.assertEqual(result["signal"], "synthetic")
         self.assertEqual(result["flag_reason"], "voice_detection_deepfake")
+
+    def test_video_call_runs_eight_windows_with_an_auto_challenge(self) -> None:
+        started = self.client.post(
+            "/start-session",
+            json={"candidate_id": "call-test", "scenario": "video_call"},
+        )
+        self.assertEqual(started.status_code, 200)
+        session = started.json()
+        self.assertEqual(session["scenario"], "video_call")
+        self.assertEqual(session["total_prompts"], 8)
+        self.assertEqual(session["prompt"]["kind"], "passive")
+        status = self.client.get(
+            "/session-status", params={"session_id": session["session_id"]}
+        ).json()
+        self.assertEqual(status["challenge"]["auto_index"], 2)
+
+        prompt = session["prompt"]
+        challenge_count = 0
+        for index in range(1, 9):
+            if prompt["kind"] == "challenge":
+                challenge_count += 1
+            submitted = self.client.post(
+                "/submit-response",
+                json=response_body(
+                    session["session_id"],
+                    index,
+                    prompt["type"],
+                    include_audio=True,
+                ),
+            )
+            self.assertEqual(submitted.status_code, 200, submitted.text)
+            prompt = submitted.json()["next_prompt"]
+
+        self.assertEqual(challenge_count, 1)
+        status = self.client.get(
+            "/session-status", params={"session_id": session["session_id"]}
+        ).json()
+        self.assertEqual(status["status"], "complete")
+        self.assertEqual(status["challenge"]["state"], "passed")
+        self.assertEqual(len(status["completed_prompts"]), 8)
+        self.assertIsNotNone(status["rolling_result"])
+        self.assertEqual(status["result"], status["rolling_result"])
+
+    def test_operator_can_queue_one_call_challenge(self) -> None:
+        session = self.client.post(
+            "/start-session", json={"scenario": "video_call"}
+        ).json()
+        requested = self.client.post(
+            "/request-challenge", json={"session_id": session["session_id"]}
+        )
+        self.assertEqual(requested.status_code, 200)
+        self.assertEqual(requested.json()["challenge"]["state"], "queued")
+        self.assertEqual(requested.json()["challenge"]["prompt_index"], 2)
+
+        duplicate = self.client.post(
+            "/request-challenge", json={"session_id": session["session_id"]}
+        )
+        self.assertEqual(duplicate.status_code, 409)
+        self.assertEqual(
+            duplicate.json()["error"]["code"], "CHALLENGE_ALREADY_ISSUED"
+        )
+
+        first = self.client.post(
+            "/submit-response",
+            json=response_body(
+                session["session_id"],
+                1,
+                "passive_window",
+                include_audio=True,
+            ),
+        )
+        self.assertEqual(first.status_code, 200, first.text)
+        self.assertEqual(first.json()["next_prompt"]["kind"], "challenge")
+        self.assertEqual(first.json()["next_prompt"]["duration_ms"], 8000)
+
+    def test_challenge_is_rejected_for_an_interview(self) -> None:
+        session = self.client.post("/start-session", json={}).json()
+        response = self.client.post(
+            "/request-challenge", json={"session_id": session["session_id"]}
+        )
+        self.assertEqual(response.status_code, 409)
+        self.assertEqual(
+            response.json()["error"]["code"], "CHALLENGE_NOT_SUPPORTED"
+        )
+
+    def test_silent_passive_window_returns_a_warning(self) -> None:
+        client = self.make_client(SilentVoiceDetector(), FakeWordMatcher())
+        session = client.post(
+            "/start-session", json={"scenario": "video_call"}
+        ).json()
+        response = client.post(
+            "/submit-response",
+            json=response_body(
+                session["session_id"],
+                1,
+                "passive_window",
+                include_audio=True,
+            ),
+        )
+        self.assertEqual(response.status_code, 200, response.text)
+        self.assertIsNone(response.json()["prompt_result"]["voice_score"])
+        self.assertEqual(response.json()["warnings"], ["no_speech_in_window"])
+
+    def test_failed_challenge_forces_a_synthetic_result(self) -> None:
+        session = SessionRecord(
+            session_id="call",
+            created_at="2026-09-27T00:00:00Z",
+            candidate_id="test",
+            enabled_modules={"liveness": True, "frame": False, "voice": True},
+            scenario="video_call",
+            prompts=call_prompts(),
+            completed_prompts=[
+                {
+                    "kind": "passive",
+                    "liveness_score": 0.9,
+                    "voice_score": 0.9,
+                    "word_match": None,
+                },
+                {
+                    "kind": "challenge",
+                    "liveness_score": 0.2,
+                    "voice_score": 0.9,
+                    "word_match": False,
+                },
+            ],
+        )
+
+        result = build_result(session)
+
+        self.assertEqual(result["signal"], "synthetic")
+        self.assertEqual(result["flag_reason"], "challenge_failed")
+        self.assertEqual(result["confidence"], 0.9)
+        self.assertEqual(result["failure_reasons"], ["challenge_failed"])
+
+    def test_phrase_failure_is_visible_despite_high_component_scores(self) -> None:
+        session = SessionRecord(
+            session_id="high-scores",
+            created_at="2026-09-27T00:00:00Z",
+            candidate_id="test",
+            enabled_modules={"liveness": True, "frame": False, "voice": True},
+            scenario="video_call",
+            prompts=call_prompts(),
+            completed_prompts=[
+                {
+                    "kind": "challenge",
+                    "liveness_score": 1.0,
+                    "voice_score": 1.0,
+                    "word_match": False,
+                }
+            ],
+        )
+
+        result = build_result(session)
+
+        self.assertEqual(result["signal"], "synthetic")
+        self.assertEqual(result["flag_reason"], "challenge_failed")
+        self.assertEqual(result["confidence"], 0.9)
+        self.assertEqual(result["failure_reasons"], ["challenge_failed"])
+
+    def test_multiple_failures_expose_the_exact_reasons(self) -> None:
+        session = SessionRecord(
+            session_id="multiple",
+            created_at="2026-09-27T00:00:00Z",
+            candidate_id="test",
+            enabled_modules={"liveness": True, "frame": False, "voice": True},
+            scenario="video_call",
+            prompts=call_prompts(),
+            completed_prompts=[
+                {
+                    "kind": "challenge",
+                    "liveness_score": 0.2,
+                    "voice_score": 1.0,
+                    "word_match": False,
+                }
+            ],
+        )
+
+        result = build_result(session)
+
+        self.assertEqual(result["flag_reason"], "multiple_signals_failed")
+        self.assertEqual(
+            result["failure_reasons"],
+            ["liveness_timing_mismatch", "challenge_failed"],
+        )
 
 
 if __name__ == "__main__":

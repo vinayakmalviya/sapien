@@ -15,7 +15,7 @@ const FLAG_REASON_SENTENCES: Record<FlagReasonCode, string> = {
   word_mismatch:
     "The voice score passed, but the spoken word did not match the expected word.",
   challenge_failed:
-    "The candidate did not complete the identity check the host asked for during the call.",
+    "The head movement or requested phrase did not pass the call challenge. See the challenge breakdown above.",
   multiple_signals_failed: "Two or more detection modules failed.",
 };
 
@@ -26,8 +26,10 @@ const FLAG_REASON_SENTENCES: Record<FlagReasonCode, string> = {
  */
 export function FlagReasonCard({
   flagReason,
+  failureReasons,
 }: {
   flagReason: FlagReasonCode | null;
+  failureReasons?: FlagReasonCode[];
 }) {
   if (!flagReason) return null;
 
@@ -41,6 +43,13 @@ export function FlagReasonCard({
           {FLAG_REASON_SENTENCES[flagReason]}
         </p>
         <p className="font-mono text-base text-neutral-500">{flagReason}</p>
+        {flagReason === "multiple_signals_failed" && failureReasons?.length ? (
+          <ul className="mt-3 list-disc space-y-1 pl-5 text-sm text-neutral-300">
+            {failureReasons.map((reason) => (
+              <li key={reason}>{FLAG_REASON_SENTENCES[reason]}</li>
+            ))}
+          </ul>
+        ) : null}
       </CardContent>
     </Card>
   );

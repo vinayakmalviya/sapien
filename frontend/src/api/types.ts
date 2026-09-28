@@ -37,7 +37,7 @@ export interface Prompt {
   instruction: string;
   /** The phrase the candidate must speak, or null for a prompt with no speech. */
   expected_word: string | null;
-  /** The length of the recording window, in milliseconds. 3000-6000. */
+  /** The length of the recording window, in milliseconds. */
   duration_ms: number;
   /** Selects the presentation. Section 3.6. */
   kind: PromptKind;
@@ -154,6 +154,9 @@ export interface PromptResult {
   voice_score: number | null;
   /** null when the prompt has no expected word. */
   word_match: boolean | null;
+  /** Operator-only diagnostics for a spoken challenge. */
+  expected_phrase?: string | null;
+  transcript?: string | null;
   latency_ms: number;
 }
 
@@ -188,6 +191,8 @@ export interface CompletedPromptSummary {
   frame_score: number;
   voice_score: number | null;
   word_match: boolean | null;
+  expected_phrase?: string | null;
+  transcript?: string | null;
   latency_ms: number;
   kind: PromptKind;
 }
@@ -304,6 +309,8 @@ export interface GetResultResponse {
   weights: Weights;
   /** null when signal is "real". */
   flag_reason: FlagReasonCode | null;
+  /** Every failed check. Useful when flag_reason is multiple_signals_failed. */
+  failure_reasons?: FlagReasonCode[];
 }
 
 // ---------------------------------------------------------------------------

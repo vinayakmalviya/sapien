@@ -17,7 +17,7 @@ export function getPromptPresentation(prompt: Prompt): PromptPresentation {
     case "passive":
       return { leadInMs: 0, showsPrompt: false, recordsAudio: true };
     case "challenge":
-      return { leadInMs: LEAD_IN_MS, showsPrompt: true, recordsAudio: true };
+      return { leadInMs: 0, showsPrompt: true, recordsAudio: true };
     case "scripted":
     default:
       return {

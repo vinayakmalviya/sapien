@@ -99,7 +99,7 @@ The launcher gets a scenario dropdown. The dropdown has two values:
 
 In the video call, the candidate follows no list of instructions. The frontend records the call in 5-second windows. Sapien scores each window in the background. The operator console shows a verdict that updates after each window.
 
-At one point in the call, the host asks for a quick check. This check is the **challenge**. The challenge arrives at a random slot, or when the operator presses a button. A prepared clip cannot answer an instruction it did not expect. The challenge is therefore the moment the synthetic candidate fails.
+After the first passive window, the host asks for a quick check. This check is the **challenge**. The operator can also request it. A prepared clip cannot answer an instruction it did not expect. The challenge is therefore the moment the synthetic candidate fails.
 
 The pitch point: the same API and the same SDK now run inside a conferencing product. Section 13 of `handoff.md` names this as the secondary delivery model.
 
@@ -114,7 +114,7 @@ Do not reopen these decisions tonight.
 | Scope | All three tiers (Section 6). Build them in order. Each tier must run before the next tier starts. |
 | Call layout | Picture in picture. The interviewer is the large tile. The candidate's self view is a small tile. |
 | Main projector screen | The operator console. |
-| Challenge trigger | Both. The backend schedules an auto challenge. The operator can also request one earlier. |
+| Challenge trigger | Both. The backend schedules an auto challenge after the first five-second window. The operator can also request one. |
 | Challenges for each call | One at most. |
 | Call length | 8 slots, fixed. About 50 seconds. |
 | Captions | Out of scope. |
@@ -294,7 +294,7 @@ export function getPromptPresentation(prompt: Prompt): PromptPresentation;
 |---|---|---|---|
 | `scripted` | `LEAD_IN_MS` | `true` | `prompt.expected_word !== null` |
 | `passive` | `0` | `false` | `true` |
-| `challenge` | `LEAD_IN_MS` | `true` | `true` |
+| `challenge` | `0` | `true` | `true` |
 
 Move `LEAD_IN_MS` from `useSessionRunner.ts` into `scoring/constants.ts`.
 
@@ -321,7 +321,7 @@ Add `passive_window` to the `PromptType` union and to `isKnownPromptType` in `ap
 | Natural motion | The standard deviation of the yaw values in the window | `PASSIVE_MIN_YAW_STDDEV_DEG = 0.5` |
 | Natural blinks | `blink_count` in the window | 1 blink. Give `PASSIVE_NO_BLINK_FACTOR = 0.6` for 0 blinks. A person does not blink in every 5-second window. |
 
-Score: `presence × (motionFactor + blinkFactor) / 2`.
+Score: `presence × (0.7 + 0.2 × motionFactor + 0.1 × blinkFactor)`. Face presence carries most of the score because a real caller can sit still.
 
 Put each value in `scoring/constants.ts`, with a comment that gives the reason.
 
@@ -384,7 +384,7 @@ Split the console into `InterviewConsole` and `CallConsole` (Section 5.3). Add `
 
 **Milestone 5 — The challenge flow.**
 Add the `Challenge` types, `useRequestChallenge`, `ChallengePanel`, and `RequestChallengeButton`. Mark the challenge slot in `TrustTimeline`. Add `challenge_failed` to `FlagReasonCard`. Update the mock: pick the auto slot, add `POST /request-challenge`, replace the slot when `next_prompt` is built, and apply the challenge rule from Section 12.6 of the contract.
-**Done when:** with no button press, a challenge banner appears at slot 4, 5, or 6. With a press at slot 2, the banner appears at slot 3. A second press returns `CHALLENGE_ALREADY_ISSUED`, and the console shows the message. A synthetic run ends with SYNTHETIC and `challenge_failed`.
+**Done when:** with no button press, a challenge banner appears at slot 2, after the first five-second window. A second request returns `CHALLENGE_ALREADY_ISSUED`, and the console shows the message. A synthetic run ends with SYNTHETIC and `challenge_failed`.
 
 **Milestone 6 — Rehearsal against the live backend.**
 Set `VITE_USE_MOCK_API=false`. Run all four combinations: ATS or call, and webcam or file.
@@ -398,14 +398,14 @@ Set `VITE_USE_MOCK_API=false`. Run all four combinations: ATS or call, and webca
 2. In the call window, press "Join now". The call opens. The host tile is large. The candidate's own tile is small.
 3. The presenter asks the candidate a normal question, for example: "Tell us about your last project." The candidate answers naturally.
 4. On the console, point to the trust timeline as it fills. Point to the rolling verdict after slot 2: REAL.
-5. The challenge banner appears. The candidate turns the head and says the phrase. The console marks the challenge as passed. The call ends with REAL.
+5. After the first five-second window, the challenge banner appears. The candidate turns the head and says the phrase. The console marks the challenge as passed. The call ends with REAL.
 6. Narrate the pitch: "The same API, the same SDK, now inside a conferencing product."
 7. Start a second call. Turn the synthetic switch on. Press Start, then "Join now". The avatar clip plays as the candidate.
 8. On the console, show that the passive windows look almost normal. A replayed face still moves and blinks.
 9. Press "Request challenge". Say: "We ask for something a recording cannot know in advance."
 10. The banner appears. The clip keeps talking. It does not turn or say the phrase. The console flips to SYNTHETIC with `challenge_failed`.
 
-Press the button in step 9 only after slot 2. The rolling verdict is then visible before the flip. The auto challenge is the fallback if nobody presses the button.
+The automatic challenge is the normal demo path. Use the operator button only when you want to demonstrate manual challenge scheduling.
 
 ---
 
@@ -416,7 +416,7 @@ Press the button in step 9 only after slot 2. The rolling verdict is then visibl
 | The captured MP4 audio is silent | Verify it in Section 4.2. Use the Web Audio fallback. |
 | The voice model does not flag the clip | Check the clip with `check_file.py` before the demo. The challenge still flags a clip that does not respond. |
 | The rolling verdict flips on one bad window | Show it only after `MIN_SLOTS_FOR_ROLLING_VERDICT` slots. |
-| The operator presses the button during slot 8 | The backend returns `CHALLENGE_TOO_LATE`. The auto challenge already ran by slot 6. |
+| The operator presses the button during slot 8 | The backend returns `CHALLENGE_TOO_LATE`. The automatic challenge already ran in slot 2. |
 | The real candidate stays silent | A silent window gives a `null` voice score and a warning. It is not an error. Ask the candidate a question in step 3. |
 | The loop point of the MP4 is visible | Use a clip of about 60 seconds. |
 | A trust timeline colour breaks the verdict colour rule | Use bar height and neutral colours only (Section 3). |
