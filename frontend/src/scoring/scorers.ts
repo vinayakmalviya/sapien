@@ -4,6 +4,9 @@ import {
   FULL_SCORE_BLINK_COUNT,
   FULL_SCORE_JAW_OPEN_VARIANCE,
   FULL_SCORE_YAW_DEGREES,
+  PASSIVE_FULL_SCORE_BLINK_COUNT,
+  PASSIVE_MIN_YAW_STDDEV_DEG,
+  PASSIVE_NO_BLINK_FACTOR,
   TRACKING_LOSS_PENALTY_FACTOR,
   TRACKING_LOSS_PENALTY_THRESHOLD,
 } from "./constants";
@@ -123,8 +126,7 @@ export const scoreSpeakWord: Scorer = (window) => {
   };
 };
 
-/** Counts the eyeBlink peaks over the threshold. Full score at 2 blinks. */
-export const scoreBlink: Scorer = (window) => {
+function countBlinks(window: LandmarkWindow): number {
   const leftBlinkCount = countRisingEdges(
     window.samples.map((sample) => sample.eyeBlinkLeft),
     EYE_BLINK_ACTIVE_THRESHOLD,
@@ -135,7 +137,12 @@ export const scoreBlink: Scorer = (window) => {
   );
   // A real blink closes both eyes. Head angle can foreshorten one eye's
   // signal more than the other's, so take the more confident (higher) count.
-  const blinkCount = Math.max(leftBlinkCount, rightBlinkCount);
+  return Math.max(leftBlinkCount, rightBlinkCount);
+}
+
+/** Counts the eyeBlink peaks over the threshold. Full score at 2 blinks. */
+export const scoreBlink: Scorer = (window) => {
+  const blinkCount = countBlinks(window);
 
   const rawScore = clamp01(blinkCount / FULL_SCORE_BLINK_COUNT);
   const score = applyTrackingLossPenalty(rawScore, window.trackingLossRatio);
@@ -144,6 +151,52 @@ export const scoreBlink: Scorer = (window) => {
     score,
     detail: {
       ...baseDetail(window),
+      blink_count: blinkCount,
+    },
+  };
+};
+
+/**
+ * A 5-second window of an ordinary call. Section 5.5 of
+ * video-call-scenario.md. A frozen feed, a static photo, or an absent face
+ * fails. A replayed video of a real person passes — the challenge exists
+ * for that case.
+ *
+ * Score: presence × (motionFactor + blinkFactor) / 2. Presence already
+ * scales by tracking loss, so the tracking-loss penalty is not applied again.
+ */
+export const scorePassiveWindow: Scorer = (window) => {
+  const presence = clamp01(1 - window.trackingLossRatio);
+
+  const yawValues = window.samples.map((sample) => sample.yawDegrees);
+  const yawStdDev = Math.sqrt(variance(yawValues));
+  const motionFactor = clamp01(yawStdDev / PASSIVE_MIN_YAW_STDDEV_DEG);
+
+  const blinkCount = countBlinks(window);
+  const blinkFactor =
+    blinkCount >= PASSIVE_FULL_SCORE_BLINK_COUNT ? 1 : PASSIVE_NO_BLINK_FACTOR;
+
+  const score = presence * ((motionFactor + blinkFactor) / 2);
+
+  const signedPeak = yawValues.reduce(
+    (peak, value) => (Math.abs(value) > Math.abs(peak) ? value : peak),
+    0,
+  );
+  let yawDirection: YawDirection = "none";
+  if (Math.abs(signedPeak) > 1) {
+    yawDirection = signedPeak > 0 ? "right" : "left";
+  }
+  const lastNose = window.samples.at(-1)?.noseDxNormalized ?? 0;
+  const jawOpenVariance = variance(window.samples.map((sample) => sample.jawOpen));
+
+  return {
+    score,
+    detail: {
+      ...baseDetail(window),
+      yaw_peak_degrees: Number(signedPeak.toFixed(1)),
+      yaw_direction: yawDirection,
+      nose_dx_normalized: Number(lastNose.toFixed(3)),
+      jaw_open_variance: Number(jawOpenVariance.toFixed(4)),
       blink_count: blinkCount,
     },
   };

@@ -1,11 +1,13 @@
 import {
   useMutation,
   useQuery,
+  useQueryClient,
   type UseQueryOptions,
 } from "@tanstack/react-query";
 import { apiRequest, ApiError } from "./client";
 import type {
   GetResultResponse,
+  RequestChallengeResponse,
   SessionStatusResponse,
   StartSessionRequest,
   StartSessionResponse,
@@ -32,6 +34,24 @@ export function useSubmitResponse() {
         method: "POST",
         body,
       }),
+  });
+}
+
+/**
+ * POST /request-challenge. Called by the operator surface only. Section 13
+ * of ui-contract.md. Refetches the session status on success, so the
+ * console shows the queued challenge at once, not on the next poll.
+ */
+export function useRequestChallenge(sessionId: string) {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: () =>
+      apiRequest<RequestChallengeResponse>("/request-challenge", {
+        method: "POST",
+        body: { session_id: sessionId },
+      }),
+    onSuccess: () =>
+      queryClient.invalidateQueries({ queryKey: ["session-status", sessionId] }),
   });
 }
 

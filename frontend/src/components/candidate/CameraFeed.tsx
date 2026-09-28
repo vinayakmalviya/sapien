@@ -1,4 +1,5 @@
 import { useEffect, type RefObject } from "react";
+import { cn } from "@/lib/utils";
 
 /**
  * Shows the video element. Milestone 3 adds `LandmarkOverlay` on top of it.
@@ -12,38 +13,45 @@ export function CameraFeed({
   stream,
   fileUrl,
   videoRef,
+  className = "w-[480px] rounded-xl",
 }: {
   stream: MediaStream | null;
   fileUrl?: string | null;
   videoRef: RefObject<HTMLVideoElement | null>;
+  /** Display size only. The element still decodes at the source resolution. */
+  className?: string;
 }) {
   useEffect(() => {
     const video = videoRef.current;
     if (!video) return;
 
+    // The webcam stays muted: playing its own microphone causes echo. The
+    // file plays with sound, because the recorder captures the clip's
+    // playback (`useVideoSource`).
+    video.muted = !fileUrl;
+
+    // Assigning srcObject or src restarts the element's load, even with the
+    // same value, and aborts a pending play(). Assign only on a change.
     if (fileUrl) {
-      video.srcObject = null;
+      if (video.srcObject) video.srcObject = null;
       if (video.getAttribute("src") !== fileUrl) {
         video.src = fileUrl;
       }
       video.loop = true;
-      video.play().catch(() => {
-        // Autoplay can be blocked before a user gesture. The candidate
-        // has already pressed "Start interview" by the time this runs.
-      });
+      // useVideoSource starts playback, after the candidate's button press.
     } else {
-      video.removeAttribute("src");
-      video.srcObject = stream;
+      if (video.hasAttribute("src")) video.removeAttribute("src");
+      if (video.srcObject !== stream) video.srcObject = stream;
     }
   }, [stream, fileUrl, videoRef]);
 
   return (
     <video
       ref={videoRef}
-      autoPlay
-      muted
+      autoPlay={!fileUrl}
+      muted={!fileUrl}
       playsInline
-      className="aspect-[4/3] w-[480px] rounded-xl bg-slate-900 object-cover"
+      className={cn("aspect-[4/3] bg-slate-900 object-cover", className)}
     />
   );
 }

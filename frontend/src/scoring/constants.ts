@@ -15,6 +15,12 @@
  */
 export const GOOD_FRAMES_FOR_CALIBRATION = 5;
 
+/**
+ * The lead-in before a scripted prompt or a challenge starts recording.
+ * Section 7 of frontend-handoff.md. A passive window has no lead-in.
+ */
+export const LEAD_IN_MS = 2000;
+
 // ---------------------------------------------------------------------------
 // Landmarker publish rate. Section 6.1 of frontend-handoff.md.
 // ---------------------------------------------------------------------------
@@ -68,6 +74,38 @@ export const EYE_BLINK_ACTIVE_THRESHOLD = 0.4;
 
 /** Two blink events, counted as rising edges over the threshold, earn a full score. */
 export const FULL_SCORE_BLINK_COUNT = 2;
+
+// ---------------------------------------------------------------------------
+// passive_window scoring. Section 5.5 of video-call-scenario.md.
+// ---------------------------------------------------------------------------
+
+/**
+ * A yaw standard deviation at or above this many degrees, over the window,
+ * earns the full motion factor. A live person in a call makes small head
+ * movements all the time; a frozen feed or a static photo sits near 0.
+ */
+export const PASSIVE_MIN_YAW_STDDEV_DEG = 0.5;
+
+/** One blink in the window earns the full blink factor. */
+export const PASSIVE_FULL_SCORE_BLINK_COUNT = 1;
+
+/**
+ * The blink factor for a window with no blink. Not 0: a person does not
+ * blink in every 5-second window, and a missed blink must not fail a live
+ * candidate on its own.
+ */
+export const PASSIVE_NO_BLINK_FACTOR = 0.6;
+
+// ---------------------------------------------------------------------------
+// Operator console, video call. Section 5.3 of video-call-scenario.md.
+// ---------------------------------------------------------------------------
+
+/**
+ * Show the rolling verdict only after this many completed slots. One window
+ * with the head turned away can score low; a verdict that flips on the
+ * first window looks broken.
+ */
+export const MIN_SLOTS_FOR_ROLLING_VERDICT = 2;
 
 // ---------------------------------------------------------------------------
 // Capture quality penalty. Section 5.2 of ui-contract.md, Section 8 of

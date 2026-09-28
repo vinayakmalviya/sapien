@@ -52,25 +52,33 @@ find . -maxdepth 1 -name "@"
 
 ### 2.3 The accent colour and the reserved verdict colours
 
-The colour decision is not final. The accent colour lives in exactly one place:
+The colour decision is final: **Rose, `#E86B78`**. The accent colour lives in exactly one place:
 
 ```css
 /* frontend/src/index.css */
 :root {
-    --brand-accent: #99582a;
-    --brand-accent-foreground: oklch(0.985 0 0);
+    --brand-accent: #E86B78;
+    --brand-accent-foreground: oklch(0.145 0 0);
 }
 ```
 
-`--primary` and `--ring` read from `--brand-accent`, in both the light and dark theme blocks. Utility classes `bg-brand`, `text-brand`, `border-brand` are available.
+The foreground is dark. White text on the rose has a contrast ratio of about 3.1 to 1. Dark text gives about 6 to 1.
+
+`--primary` and `--ring` read from `--brand-accent`, in both the light and dark theme blocks. Utility classes `bg-brand`, `text-brand`, `border-brand` are available. Do not add a second colour definition.
+
+**Keep the rose off the candidate surfaces.** The `.surface-ats` class in `index.css` sets `--primary` to a slate near-black, `--primary-foreground` to white, and `--ring` to a light slate. `CandidateShell` applies `.surface-ats` on its root element. Candidate components use `primary`, not `brand`. The one exception is `LandmarkOverlay`, the demo face mesh. The video call surface gets its own class, `.surface-call` (Milestone 2 of `docs/video-call-scenario.md`).
+
+**The icon** is `frontend/public/sapien-icon.jpeg`. `SapienIcon` (`components/console/SapienIcon.tsx`) shows it on a white tile. The console header shows it at 28 pixels tall. The launcher card shows it at 48 pixels tall. It is also the favicon. Do not show the icon on a candidate surface. Entry 2 of `docs/frontend-deferred-fixes.md` replaces the JPEG.
 
 Three more colours are reserved for the verdict only (Section 9.1 of `frontend-handoff.md`):
 
 ```css
 --verdict-real: oklch(0.6 0.16 155);        /* emerald */
---verdict-synthetic: oklch(0.58 0.22 25);   /* red */
+--verdict-synthetic: oklch(0.62 0.21 40);   /* vermilion */
 --verdict-uncertain: oklch(0.75 0.16 75);   /* amber */
 ```
+
+The synthetic colour moved from red (hue 25) to vermilion (hue 40). The rose has a hue of about 12. A red verdict next to a rose button looks like the same colour on a projector. Do not put a rose border, rose background, or rose text next to `SignalVerdict`.
 
 **`SignalVerdict` (Section 2.8) is the only component in the whole app allowed to use `text-verdict-real` / `text-verdict-synthetic` / `text-verdict-uncertain`.** Two real violations of this rule were found and fixed during the build — a generic form error on the launcher, and a generic network error on the console, both once used `text-verdict-synthetic` for an unrelated red colour. Check any new error state against this rule before shipping it.
 
@@ -102,6 +110,7 @@ All four routes render, and now carry real content:
 |---|---|---|
 | `/` | `routes/index.tsx` | The launcher. Starts a session, primes the camera permission, stores the first prompt for the candidate window (Section 2.7), opens the interview window, and has a switch for the synthetic-candidate MP4 path (Section 2.9). |
 | `/interview/$sessionId` | `routes/interview.$sessionId.tsx` | The full candidate flow: idle → permission → calibration → 3 prompts (camera + mesh overlay + countdown) → `SessionCompleteCard`, or an error card. Reads `?source=file` to switch to the MP4 clip. |
+| `/call/$sessionId` | `routes/call.$sessionId.tsx` | The video call candidate surface (Milestones 2 and 3 of `docs/video-call-scenario.md`): pre-join → call stage (host tile, picture-in-picture self tile, decorative controls, `HostRequestBanner` for a challenge) → "The meeting has ended", or an error card. No face mesh. Components are in `components/call/`. The launcher opens it when the `scenario` in the `start-session` response is `video_call`. `session/presentation.ts` reads `prompt.kind` to set the lead-in, the prompt visibility, and the audio recording. |
 | `/console/$sessionId` | `routes/console.$sessionId.tsx` | The full operator flow: live status badge, latency badge, session timeline, scoring state, and — once the result arrives — `SignalVerdict`, `ConfidenceGauge`, `FlagReasonCard`, and `ComponentScorePanel`. |
 | `/console/$sessionId/settings` | `routes/console.$sessionId.settings.tsx` | Still a stub. Milestone 7. |
 
@@ -124,21 +133,38 @@ All four routes render, and now carry real content:
 - `useFaceLandmarker.ts` — the detection loop. Runs on `requestVideoFrameCallback` (falls back to a `currentTime`-deduped `requestAnimationFrame` loop where unsupported). Never sets React state inside the loop; publishes a snapshot 8 times a second. GPU delegate with a CPU fallback, verified against a real headless run.
 - `useFrameSampler.ts` — canvas → base64 JPEG, 640px wide, quality 0.8, no `data:` prefix.
 - `useAudioRecorder.ts` — `MediaRecorder` → base64, reports the browser's actual negotiated MIME type.
-- `useVideoSource.ts` — Milestone 6. Switches between the webcam (`useMediaStream`) and a prepared MP4 file. See Section 2.9 — **no MP4 file has been added yet.**
+- `useVideoSource.ts` — Milestone 6. Switches between the webcam (`useMediaStream`) and a prepared MP4 file. It also returns `audioStream`, the stream the audio recorder reads, for both source types. See Section 2.9.
 
 Candidate components in `frontend/src/components/candidate/`: `CameraFeed`, `PermissionGate`, `PromptCard`, `CountdownRing`, `CalibrationHint`, `LandmarkOverlay`, `SessionCompleteCard` (shows no score, by construction — it takes no score-shaped prop at all).
 
 Console components in `frontend/src/components/console/`: `SessionTimeline`, `ScoreBar`, `ComponentScorePanel`, `LatencyBadge`, `ScoringState`, `SignalVerdict`, `ConfidenceGauge`, `FlagReasonCard`.
 
+The console route selects the body from `data.scenario` (Milestones 4 and 5 of `docs/video-call-scenario.md`):
+- `InterviewConsole` — the ATS body. Its markup is the same as before the split.
+- `CallConsole` — the rolling verdict (`SignalVerdict size="compact"`, shown after `MIN_SLOTS_FOR_ROLLING_VERDICT` slots), `TrustTimeline` (8 columns, neutral bars, a dashed decision line, an outlined challenge slot), and `ChallengePanel` with its request button.
+- `FinalResult` — the large verdict, `FlagReasonCard`, and `ComponentScorePanel`. Both bodies use it.
+
+The mock implements the challenge flow from Sections 12 and 13 of `ui-contract.md`. One rule needs a decision by the backend team. Section 12.6 says to use `multiple_signals_failed` when "another check also failed". The synthetic clip always has a low voice score, so a literal reading never gives `challenge_failed`, and the demo story needs it. The mock uses `multiple_signals_failed` only when the combined score was already synthetic before the challenge rule. The backend must use the same reading, or the demo shows `multiple_signals_failed`.
+
 One contract gap worth knowing about: `thresholds` in `ui-contract.md` Section 7.1 has no liveness-specific value — only `frame_fake`, `voice_real`, `voice_fake`. `ComponentScorePanel`'s liveness bar therefore draws no threshold marker; its caption shows `prompts_passed`/`prompts_total` instead of inventing a number. The voice bar draws two markers (`voice_real` and `voice_fake`), framing Section 15.3's uncertain band.
 
-### 2.9 The synthetic-candidate video path — MP4 file missing
+### 2.9 The synthetic-candidate video path
 
-`useVideoSource` expects a file at `frontend/public/media/synthetic-candidate.mp4`. **This file does not exist in the repository.** `frontend/public/media/README.md` documents the exact filename and the two things the clip needs (a visible face, for calibration to pass; H.264 in an MP4 container).
+The clip is at `frontend/public/media/synthetic-candidate.mp4`. It is H.264 video with AAC audio, 848 by 480 pixels, and 10 seconds long. `CameraFeed` loops it. Section 4.1 of `docs/video-call-scenario.md` asks for about 60 seconds for the video call. A 10-second loop is visible in a 50-second call.
 
-The launcher has a "Use synthetic candidate clip" switch, wired end to end — it opens `/interview/$sessionId?source=file`, and `CameraFeed` will attempt to play whatever is at that path. Until the file is added, this path shows a broken video and calibration never completes (there is no face to detect). This is expected, not a bug in the code.
+The launcher has a "Use synthetic candidate clip" switch. With the switch on, the launcher does not ask for the camera permission, and the candidate window opens at `/interview/$sessionId?source=file`.
 
-**Adding the clip and confirming this path end to end is the most useful thing a future session could do before Milestone 6 is fully demo-ready.**
+**The file source sends audio.** The flow is:
+1. The candidate presses "Start interview". The press is the user gesture that allows playback with sound.
+2. `useVideoSource` calls `video.play()`, then calls `video.captureStream()` one time. It keeps the result and returns it as `audioStream`.
+3. If the captured stream has no audio track, `useVideoSource` routes the element through Web Audio (`createMediaElementSource` to a `MediaStreamAudioDestinationNode`, and to the speakers).
+4. `useSessionRunner` records from `videoSource.audioStream` for both source types.
+
+`CameraFeed` mutes the webcam only. A webcam that plays its own microphone causes echo. The file plays with sound.
+
+`CameraFeed` assigns `src` and `srcObject` only when the value changes. An assignment with the same value restarts the load of the element and stops a pending `play()` with an `AbortError`.
+
+Verified in headless Chrome against the mock: both voice prompts carried a WebM/Opus clip of about 6 seconds, with an RMS level of about 0.023. The audio is not silent. The live backend check (the "done when" of Section 4.2) is still open.
 
 ### 2.10 Legibility
 

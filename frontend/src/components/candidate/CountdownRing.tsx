@@ -53,7 +53,7 @@ export function CountdownRing({
         strokeLinecap="round"
         strokeDasharray={CIRCUMFERENCE}
         strokeDashoffset={offset}
-        className="fill-none stroke-brand transition-[stroke-dashoffset] duration-100 ease-linear"
+        className="fill-none stroke-primary transition-[stroke-dashoffset] duration-100 ease-linear"
       />
     </svg>
   );

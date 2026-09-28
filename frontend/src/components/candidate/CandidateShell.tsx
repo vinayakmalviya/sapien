@@ -14,7 +14,7 @@ import {
  */
 export function CandidateShell({ children }: { children: ReactNode }) {
   return (
-    <div className="flex min-h-screen flex-col bg-slate-50 text-slate-900">
+    <div className="surface-ats flex min-h-screen flex-col bg-slate-50 text-slate-900">
       <header className="flex items-center justify-between border-b border-slate-200 bg-white px-6 py-3">
         <div className="flex items-center gap-3">
           <div className="flex size-8 items-center justify-center rounded-md bg-slate-900 text-sm font-semibold text-white">

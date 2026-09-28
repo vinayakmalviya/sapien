@@ -4,6 +4,12 @@ import { useCallback, useEffect, useRef, useState } from "react";
 export type MediaStreamStatus = "idle" | "prompting" | "granted" | "denied";
 
 /**
+ * Carries the error in the result, because a caller that awaits
+ * `requestAccess` still holds the render's stale `error` value.
+ */
+export type AccessResult = { granted: true } | { granted: false; error: string };
+
+/**
  * Some cameras (phone-as-webcam setups in particular) default to a very
  * high frame rate at low resolution — 100+ fps at 640x480 is common — when
  * no `frameRate` constraint is given. That wastes CPU in the landmarker
@@ -30,7 +36,7 @@ export function useMediaStream() {
   const [error, setError] = useState<string | null>(null);
   const streamRef = useRef<MediaStream | null>(null);
 
-  const requestAccess = useCallback(async (): Promise<boolean> => {
+  const requestAccess = useCallback(async (): Promise<AccessResult> => {
     setStatus("prompting");
     setError(null);
     try {
@@ -41,15 +47,15 @@ export function useMediaStream() {
       streamRef.current = mediaStream;
       setStream(mediaStream);
       setStatus("granted");
-      return true;
+      return { granted: true };
     } catch (err) {
-      setError(
+      const message =
         err instanceof Error
           ? err.message
-          : "Camera and microphone access was denied.",
-      );
+          : "Camera and microphone access was denied.";
+      setError(message);
       setStatus("denied");
-      return false;
+      return { granted: false, error: message };
     }
   }, []);
 

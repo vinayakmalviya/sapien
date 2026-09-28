@@ -3,6 +3,7 @@ import {
   scoreBlink,
   scoreHeadTurnLeft,
   scoreHeadTurnRight,
+  scorePassiveWindow,
   scoreSpeakWord,
   type Scorer,
 } from "./scorers";
@@ -12,12 +13,13 @@ const SCORER_REGISTRY: Record<PromptType, Scorer> = {
   head_turn_left: scoreHeadTurnLeft,
   speak_word: scoreSpeakWord,
   blink: scoreBlink,
+  passive_window: scorePassiveWindow,
 };
 
 /**
  * Section 13 of frontend-handoff.md: "The frontend must reject an unknown
  * prompt.type. Do not guess a scorer." Thrown by `getScorerForPrompt` for
- * anything outside the four known values.
+ * anything outside the five known values.
  */
 export class UnknownPromptTypeError extends Error {
   constructor(promptType: string) {

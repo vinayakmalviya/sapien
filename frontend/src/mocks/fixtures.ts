@@ -1,4 +1,10 @@
-import type { GetResultResponse, Prompt, Thresholds, Weights } from "@/api/types";
+import type {
+  GetResultResponse,
+  Prompt,
+  Scenario,
+  Thresholds,
+  Weights,
+} from "@/api/types";
 
 /**
  * The fixed demo prompt set. Section 3.2 of ui-contract.md.
@@ -12,6 +18,7 @@ export const DEMO_PROMPTS: Prompt[] = [
       "Turn your head slightly to the right, then say 'orange river seven bright morning'.",
     expected_word: "orange river seven bright morning",
     duration_ms: 6000,
+    kind: "scripted",
   },
   {
     index: 2,
@@ -20,6 +27,7 @@ export const DEMO_PROMPTS: Prompt[] = [
     instruction: "Say 'silver harbour twenty four quiet boats' now.",
     expected_word: "silver harbour twenty four quiet boats",
     duration_ms: 6000,
+    kind: "scripted",
   },
   {
     index: 3,
@@ -28,15 +36,69 @@ export const DEMO_PROMPTS: Prompt[] = [
     instruction: "Blink two times.",
     expected_word: null,
     duration_ms: 4000,
+    kind: "scripted",
   },
 ];
+
+/** Section 12.1 of ui-contract.md: 8 slots, each a 5-second passive window. */
+export const CALL_SLOT_COUNT = 8;
+
+export const CALL_PROMPTS: Prompt[] = Array.from(
+  { length: CALL_SLOT_COUNT },
+  (_, i) => ({
+    index: i + 1,
+    of: CALL_SLOT_COUNT,
+    type: "passive_window",
+    instruction: "",
+    expected_word: null,
+    duration_ms: 5000,
+    kind: "passive",
+  }),
+);
+
+/**
+ * The base prompt plan for each scenario. A `video_call` session starts as
+ * 8 passive windows; one slot is replaced by a challenge during the call
+ * (Section 12.3 of ui-contract.md).
+ */
+export function getPromptPlan(scenario: Scenario): Prompt[] {
+  return scenario === "video_call" ? CALL_PROMPTS : DEMO_PROMPTS;
+}
+
+/** Section 12.3: the auto challenge lands on one of these slots, at random. */
+export const AUTO_CHALLENGE_SLOTS = [4, 5, 6];
+
+/**
+ * Section 12.1: the challenge pool. The phrases differ from the ATS
+ * phrases, so a prepared clip cannot contain them.
+ */
+export const CHALLENGE_POOL: Array<
+  Pick<Prompt, "type" | "instruction" | "expected_word">
+> = [
+  {
+    type: "head_turn_right",
+    instruction:
+      "Please turn your head slightly to the right and say 'copper lantern nineteen green valley'.",
+    expected_word: "copper lantern nineteen green valley",
+  },
+  {
+    type: "head_turn_left",
+    instruction:
+      "Please turn your head slightly to the left and say 'maple station sixty two calm rivers'.",
+    expected_word: "maple station sixty two calm rivers",
+  },
+];
+
+export const CHALLENGE_DURATION_MS = 6000;
 
 /** Section 7.1 — the active thresholds. Held here once, echoed back by the mock API. */
 export const MOCK_THRESHOLDS: Thresholds = {
   decision: 0.5,
   frame_fake: 0.15,
-  voice_real: 0.35,
-  voice_fake: 0.65,
+  // 1.0 means real for every score: real at or above voice_real, deepfake
+  // below voice_fake. Section 7.1 of ui-contract.md.
+  voice_real: 0.65,
+  voice_fake: 0.35,
 };
 
 /** Section 7 — the fixed Decision Engine weights, before renormalization. */

@@ -4,7 +4,8 @@
  * Deliberately neutral, not verdict-coloured. `SignalVerdict` is the one
  * place the real/synthetic colour lives (Section 9.1) — this gauge shows
  * the same underlying number as a plain magnitude, with the decision
- * threshold marked from the API response, not a frontend constant.
+ * threshold marked from the API response, not a frontend constant. The
+ * fill is not rose either: rose next to the verdict blurs a SYNTHETIC read.
  */
 export function ConfidenceGauge({
   confidence,
@@ -21,7 +22,7 @@ export function ConfidenceGauge({
       <p className="text-base text-neutral-500">confidence</p>
       <div className="relative h-2 w-56 rounded-full bg-neutral-800">
         <div
-          className="absolute inset-y-0 left-0 rounded-full bg-brand"
+          className="absolute inset-y-0 left-0 rounded-full bg-neutral-400"
           style={{ width: `${Math.min(100, Math.max(0, confidence * 100))}%` }}
         />
         <div
