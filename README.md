@@ -2,6 +2,8 @@
 
 Sapien is a multi modal authenticity API. Sapien checks if a live video, audio, image, or text session is real or synthetic. Sapien returns one signal, in real time, through one integration point.
 
+![Sapien cover image](https://github.com/vinayakmalviya/sapien/blob/main/github-cover.svg?raw=true)
+
 ## What the demo proves
 
 1. A single API can carry a live liveness check and a voice check.
