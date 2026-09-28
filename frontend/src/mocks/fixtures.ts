@@ -65,8 +65,8 @@ export function getPromptPlan(scenario: Scenario): Prompt[] {
   return scenario === "video_call" ? CALL_PROMPTS : DEMO_PROMPTS;
 }
 
-/** Section 12.3: the auto challenge lands on one of these slots, at random. */
-export const AUTO_CHALLENGE_SLOTS = [4, 5, 6];
+/** The challenge follows the first five-second passive window. */
+export const AUTO_CHALLENGE_SLOTS = [2];
 
 /**
  * Section 12.1: the challenge pool. The phrases differ from the ATS
@@ -78,18 +78,18 @@ export const CHALLENGE_POOL: Array<
   {
     type: "head_turn_right",
     instruction:
-      "Please turn your head slightly to the right and say 'copper lantern nineteen green valley'.",
-    expected_word: "copper lantern nineteen green valley",
+      "Please turn your head slightly to the right and say 'blue river seven happy morning'.",
+    expected_word: "blue river seven happy morning",
   },
   {
     type: "head_turn_left",
     instruction:
-      "Please turn your head slightly to the left and say 'maple station sixty two calm rivers'.",
-    expected_word: "maple station sixty two calm rivers",
+      "Please turn your head slightly to the left and say 'red apple twenty four quiet garden'.",
+    expected_word: "red apple twenty four quiet garden",
   },
 ];
 
-export const CHALLENGE_DURATION_MS = 6000;
+export const CHALLENGE_DURATION_MS = 8000;
 
 /** Section 7.1 — the active thresholds. Held here once, echoed back by the mock API. */
 export const MOCK_THRESHOLDS: Thresholds = {

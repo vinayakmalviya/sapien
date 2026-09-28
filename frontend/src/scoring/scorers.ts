@@ -5,8 +5,11 @@ import {
   FULL_SCORE_JAW_OPEN_VARIANCE,
   FULL_SCORE_YAW_DEGREES,
   PASSIVE_FULL_SCORE_BLINK_COUNT,
+  PASSIVE_BLINK_WEIGHT,
   PASSIVE_MIN_YAW_STDDEV_DEG,
+  PASSIVE_MOTION_WEIGHT,
   PASSIVE_NO_BLINK_FACTOR,
+  PASSIVE_PRESENCE_WEIGHT,
   TRACKING_LOSS_PENALTY_FACTOR,
   TRACKING_LOSS_PENALTY_THRESHOLD,
 } from "./constants";
@@ -69,16 +72,14 @@ function countRisingEdges(values: number[], threshold: number): number {
 
 function scoreHeadTurn(
   window: LandmarkWindow,
-  direction: "right" | "left",
+  _direction: "right" | "left",
 ): ScoreResult {
   const yawValues = window.samples.map((sample) => sample.yawDegrees);
-  // "right" reads the peak positive yaw. "left" reads the peak negative yaw
-  // (the peak magnitude of a negative excursion). Section 8 table.
-  const relevantValues =
-    direction === "right" ? yawValues : yawValues.map((value) => -value);
-  const peakMagnitude =
-    relevantValues.length > 0 ? Math.max(0, ...relevantValues) : 0;
-  const signedPeak = direction === "right" ? peakMagnitude : -peakMagnitude;
+  const signedPeak = yawValues.reduce(
+    (peak, value) => (Math.abs(value) > Math.abs(peak) ? value : peak),
+    0,
+  );
+  const peakMagnitude = Math.abs(signedPeak);
 
   let yawDirection: YawDirection = "none";
   if (Math.abs(signedPeak) > 1) {
@@ -162,8 +163,8 @@ export const scoreBlink: Scorer = (window) => {
  * fails. A replayed video of a real person passes — the challenge exists
  * for that case.
  *
- * Score: presence × (motionFactor + blinkFactor) / 2. Presence already
- * scales by tracking loss, so the tracking-loss penalty is not applied again.
+ * Face presence carries most of the score because a real caller can sit still.
+ * Motion and blinking add smaller bonuses. Tracking loss scales the result.
  */
 export const scorePassiveWindow: Scorer = (window) => {
   const presence = clamp01(1 - window.trackingLossRatio);
@@ -176,7 +177,11 @@ export const scorePassiveWindow: Scorer = (window) => {
   const blinkFactor =
     blinkCount >= PASSIVE_FULL_SCORE_BLINK_COUNT ? 1 : PASSIVE_NO_BLINK_FACTOR;
 
-  const score = presence * ((motionFactor + blinkFactor) / 2);
+  const score =
+    presence *
+    (PASSIVE_PRESENCE_WEIGHT +
+      motionFactor * PASSIVE_MOTION_WEIGHT +
+      blinkFactor * PASSIVE_BLINK_WEIGHT);
 
   const signedPeak = yawValues.reduce(
     (peak, value) => (Math.abs(value) > Math.abs(peak) ? value : peak),

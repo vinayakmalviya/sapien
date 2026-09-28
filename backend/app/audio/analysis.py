@@ -60,3 +60,32 @@ async def analyze_audio_bytes(
     finally:
         if temporary_path is not None:
             temporary_path.unlink(missing_ok=True)
+
+
+async def analyze_voice_bytes(
+    audio_bytes: bytes,
+    suffix: str,
+    voice_detector: Any,
+):
+    if not audio_bytes:
+        raise ValueError("The audio clip is empty.")
+    if len(audio_bytes) > MAX_AUDIO_BYTES:
+        raise OverflowError("The audio clip exceeds 25 MB.")
+    if suffix not in ALLOWED_AUDIO_SUFFIXES:
+        raise TypeError("Unsupported audio file type.")
+
+    temporary_path: Path | None = None
+    try:
+        with NamedTemporaryFile(suffix=suffix, delete=False) as temporary_file:
+            temporary_file.write(audio_bytes)
+            temporary_path = Path(temporary_file.name)
+
+        audio = await run_in_threadpool(decode_audio, temporary_path)
+        if audio.size > SR * MAX_AUDIO_SECONDS:
+            raise OverflowError(
+                f"The audio clip exceeds {MAX_AUDIO_SECONDS} seconds."
+            )
+        return await run_in_threadpool(voice_detector.detect, audio)
+    finally:
+        if temporary_path is not None:
+            temporary_path.unlink(missing_ok=True)

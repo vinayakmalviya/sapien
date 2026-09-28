@@ -21,6 +21,8 @@ export function CallConsole({
 }) {
   const completedCount = data.completed_prompts.length;
   const rolling = data.rolling_result;
+  const challengeResult =
+    data.completed_prompts.find((prompt) => prompt.kind === "challenge") ?? null;
   const showsRollingVerdict =
     rolling !== null && completedCount >= MIN_SLOTS_FOR_ROLLING_VERDICT;
 
@@ -66,6 +68,17 @@ export function CallConsole({
         sessionId={sessionId}
         challenge={data.challenge}
         status={data.status}
+        result={challengeResult}
+        decisionThreshold={
+          data.result?.thresholds.decision ??
+          rolling?.thresholds.decision ??
+          0.5
+        }
+        voiceRealThreshold={
+          data.result?.thresholds.voice_real ??
+          rolling?.thresholds.voice_real ??
+          0.65
+        }
       />
 
       {data.result ? <FinalResult result={data.result} /> : null}

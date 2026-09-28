@@ -138,8 +138,8 @@ uvicorn app.main:app --reload
 
 The API server runs at `http://localhost:8000`.
 
-The first backend start downloads `facebook/wav2vec2-base` and the Whisper
-`base` model. Later starts use the local model cache. Set
+The first backend start downloads `facebook/wav2vec2-base` and the English-only
+Whisper `base.en` model. Later starts use the local model cache. Set
 `SAPIEN_WHISPER_MODEL=tiny` before startup if you need faster local inference.
 
 ### Frontend setup
@@ -157,6 +157,23 @@ Open `http://localhost:5173`.
 The frontend uses the live FastAPI session endpoints. Liveness and voice
 authenticity are enabled. The frame classifier stays disabled until that team
 module is merged.
+
+The launcher supports two scenarios:
+
+- **ATS interview** runs the three scripted liveness and voice prompts.
+- **Video call** runs eight five-second monitoring windows and one surprise
+  identity challenge. The backend shows the challenge after the first
+  five-second window, or the operator can request it from the console.
+
+To test a generated candidate video, save it as:
+
+```text
+frontend/public/media/synthetic-candidate.mp4
+```
+
+Then select **Video call**, enable **Use synthetic candidate clip**, and start
+the session. The file must contain an audio track because each passive call
+window runs voice-authenticity analysis.
 
 FastAPI's interactive API documentation is available at:
 
@@ -182,6 +199,7 @@ All requests go through the API layer. No detection service is called directly b
 | POST | `/submit-audio` | Run voice authenticity and expected-word checks | Implemented |
 | POST | `/start-session` | Start a session and get the first prompt | Implemented |
 | POST | `/submit-response` | Submit a complete prompt response | Implemented |
+| POST | `/request-challenge` | Queue a video-call identity challenge | Implemented |
 | GET | `/session-status` | Poll session progress and result | Implemented |
 | GET | `/get-result` | Get the combined real or synthetic signal | Implemented |
 

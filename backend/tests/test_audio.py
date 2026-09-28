@@ -73,6 +73,30 @@ class AudioServiceTests(unittest.TestCase):
 
         self.assertTrue(result.matched)
 
+    def test_word_match_allows_one_whisper_error_in_a_challenge(self) -> None:
+        result = compare_transcript(
+            "Copper lantern 19 valley.",
+            "copper lantern nineteen green valley",
+        )
+
+        self.assertTrue(result.matched)
+
+    def test_word_match_rejects_unrelated_speech(self) -> None:
+        result = compare_transcript(
+            "I am describing my previous software project.",
+            "copper lantern nineteen green valley",
+        )
+
+        self.assertFalse(result.matched)
+
+    def test_word_match_accepts_phonetic_whisper_errors(self) -> None:
+        result = compare_transcript(
+            "Twoف getanani B SolamGl Cooper Lantern 19 DreamWallee",
+            "copper lantern nineteen green valley",
+        )
+
+        self.assertTrue(result.matched)
+
     def test_word_matcher_accepts_decoded_audio(self) -> None:
         matcher = WordMatcher(language="en")
         matcher._model = FakeWhisperModel()

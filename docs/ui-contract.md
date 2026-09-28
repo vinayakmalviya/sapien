@@ -61,7 +61,7 @@ The API returns this object in `POST /start-session` and in `POST /submit-respon
 | `kind` | string enum | yes | Selects how the frontend presents the prompt. Section 3.6 lists the values. |
 | `instruction` | string | yes | The text on the candidate's screen. |
 | `expected_word` | string or null | yes | The challenge phrase the candidate must speak. Set this field to `null` for a prompt with no speech. |
-| `duration_ms` | integer | yes | The length of the recording window, in milliseconds. Use a value from `3000` to `6000`. |
+| `duration_ms` | integer | yes | The length of the recording window, in milliseconds. Scripted prompts use up to `6000`; the call challenge uses `8000`. |
 
 The frontend must not read the `instruction` field to find the prompt type. The frontend reads the `type` field only. A writer can then change the wording of an instruction. That change does not break the frontend.
 
@@ -134,7 +134,7 @@ The `type` field selects the scorer. The `kind` field selects the presentation. 
 |---|---|---|
 | `scripted` | `ats_interview` | Shows the prompt card. Runs a 2-second lead-in. Then records. |
 | `passive` | `video_call` | Shows nothing. Runs no lead-in. Records at once. |
-| `challenge` | `video_call` | Shows a host request banner. Runs a 2-second lead-in. Then records. |
+| `challenge` | `video_call` | Shows a host request banner and records immediately for 8 seconds. |
 
 The backend sets `kind` on every prompt. The frontend must not guess `kind` from `type`.
 
@@ -403,7 +403,7 @@ This endpoint returns the combined decision. Call this endpoint after the last p
 {
   "session_id": "8f14e45f-ea8d-4c1e-9b3a-6d2f1a7c5e90",
   "signal": "synthetic",
-  "confidence": 0.41,
+  "confidence": 0.59,
   "completed_at": "2026-09-26T23:41:52Z",
   "component_scores": {
     "liveness_scorer": 0.92,
@@ -429,12 +429,13 @@ This endpoint returns the combined decision. Call this endpoint after the last p
 | Field | Type | Purpose |
 |---|---|---|
 | `signal` | string enum | The values are `"real"` and `"synthetic"`. |
-| `confidence` | float | The combined score from the Decision Engine. |
+| `confidence` | float | Confidence in the returned `signal`. A synthetic result uses the inverse of the combined realness score. A failed phrase challenge has a minimum synthetic confidence of `0.9`. |
 | `component_scores` | object | One score for each module. A disabled module holds `null`. |
 | `module_detail` | object | Supporting facts. The operator surface shows these facts under each score. |
 | `thresholds` | object | The active threshold values. Section 7.2 explains the reason. |
 | `weights` | object | The active Decision Engine weights. |
 | `flag_reason` | string or null | A machine-readable code. The field holds `null` when `signal` is `"real"`. |
+| `failure_reasons` | string array | Every failed check. This explains a `multiple_signals_failed` result. |
 
 The voice thresholds use the same direction as every other score: `1.0` means real. A voice score at or above `voice_real` is real. A voice score below `voice_fake` is a deepfake. A score between the two values is uncertain. Section 15.3 of `handoff.md` states the thresholds as a deepfake probability. The backend converts that probability with `1.0 - score`. The two values therefore change places.
 
@@ -554,14 +555,14 @@ The backend picks the challenge from this pool, at random:
 
 | Type | Instruction | Expected word |
 |---|---|---|
-| `head_turn_right` | `"Please turn your head slightly to the right and say 'copper lantern nineteen green valley'."` | `"copper lantern nineteen green valley"` |
-| `head_turn_left` | `"Please turn your head slightly to the left and say 'maple station sixty two calm rivers'."` | `"maple station sixty two calm rivers"` |
+| `head_turn_right` | `"Please turn your head slightly to the right and say 'blue river seven happy morning'."` | `"blue river seven happy morning"` |
+| `head_turn_left` | `"Please turn your head slightly to the left and say 'red apple twenty four quiet garden'."` | `"red apple twenty four quiet garden"` |
 
-A challenge prompt has `kind: "challenge"` and `duration_ms: 6000`.
+A challenge prompt has `kind: "challenge"` and `duration_ms: 8000`.
 
 Do not reuse the `ats_interview` phrases. A prepared clip must not contain a phrase that it can play back.
 
-The whole call takes about 50 seconds: 7 passive windows of 5 seconds, 1 challenge of 6 seconds, a 2-second lead-in, and a short upload gap after each slot.
+The whole call takes about 50 seconds: 7 passive windows of 5 seconds, 1 challenge of 8 seconds, and a short upload gap after each slot.
 
 ### 12.2 Rules for a `passive_window` submission
 
@@ -582,7 +583,7 @@ A challenge enters the plan in one of two ways:
 
 | Source | Trigger |
 |---|---|
-| `auto` | At session start, the backend picks one slot at random from slots 4, 5, and 6. That slot becomes the challenge. |
+| `auto` | At session start, the backend schedules slot 2 as the challenge. It appears after the first five-second passive window. |
 | `operator` | The operator calls `POST /request-challenge` (Section 13). The next slot becomes the challenge. |
 
 A session holds one challenge at most. An operator challenge cancels the auto challenge. An auto challenge that already ran blocks an operator challenge.
@@ -652,7 +653,7 @@ A mean over 8 slots hides one failed challenge. Seven good passive windows and o
 When the challenge fails:
 
 1. Set `signal` to `"synthetic"`.
-2. Set `confidence` to the lower value of the combined score and the challenge `liveness_score`.
+2. Return confidence in the synthetic verdict. Use at least `0.9` when the phrase does not match. For a failed movement, use at least `1 - challenge liveness_score`.
 3. Set `flag_reason` to `"challenge_failed"`. Use `"multiple_signals_failed"` if another check also failed.
 4. Set `challenge.state` to `"failed"`.
 

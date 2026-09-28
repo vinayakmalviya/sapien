@@ -46,6 +46,7 @@ export function TrustTimeline({
           </span>
           <span className="flex items-center gap-2">
             <span className="size-3 rounded-sm bg-neutral-500" /> voice
+            authenticity
           </span>
           {decisionThreshold !== null ? (
             <span className="flex items-center gap-2">
