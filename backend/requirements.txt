@@ -17,3 +17,4 @@ transformers
 torch
 pillow
 numpy
+opencv-python-headless<4.12
