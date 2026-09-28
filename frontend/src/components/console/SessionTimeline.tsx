@@ -16,6 +16,7 @@ const PROMPT_TYPE_LABELS: Record<PromptType, string> = {
   head_turn_left: "Turn head left",
   speak_word: "Speak word",
   blink: "Blink",
+  passive_window: "Passive window",
 };
 
 interface TimelineStep {

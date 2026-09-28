@@ -1,6 +1,7 @@
-import type { EnabledModules, Prompt } from "@/api/types";
+import type { EnabledModules, Prompt, Scenario } from "@/api/types";
 
 interface SessionBootstrap {
+  scenario: Scenario;
   totalPrompts: number;
   enabledModules: EnabledModules;
   firstPrompt: Prompt;
@@ -10,7 +11,8 @@ const KEY_PREFIX = "sapien:session-bootstrap:";
 
 /**
  * `POST /start-session` returns the first prompt to the operator surface
- * only. The candidate surface opens in its own window at `/interview/$id`,
+ * only. The candidate surface opens in its own window at `/interview/$id`
+ * or `/call/$id`,
  * with no prompt data in the URL (Section 5 of frontend-handoff.md: no
  * join code, no QR code — a link is enough).
  *

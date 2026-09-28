@@ -33,7 +33,7 @@ export function LandmarkOverlay({
     const dotColor =
       getComputedStyle(document.documentElement)
         .getPropertyValue("--brand-accent")
-        .trim() || "#99582a";
+        .trim() || "#E86B78";
 
     let rafId: number;
 

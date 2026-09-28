@@ -7,8 +7,9 @@ synthetic-candidate.mp4
 ```
 
 `src/capture/useVideoSource.ts` points the "file" video source at
-`/media/synthetic-candidate.mp4`. No clip has been added yet — this
-directory exists so the path is ready.
+`/media/synthetic-candidate.mp4`. The clip's own audio is captured and sent
+as the audio clip for voice prompts, so the clip needs synthetic speech.
+Section 4.1 of `docs/video-call-scenario.md` lists the full requirements.
 
 ## What the clip needs
 

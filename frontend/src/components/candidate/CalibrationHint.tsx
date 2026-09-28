@@ -15,7 +15,7 @@ export function CalibrationHint({ goodFrames }: { goodFrames: number }) {
       <p>Centre your face in the frame. Hold still.</p>
       <div className="h-1.5 w-40 overflow-hidden rounded-full bg-slate-200">
         <div
-          className="h-full bg-brand transition-[width] duration-150"
+          className="h-full bg-primary transition-[width] duration-150"
           style={{ width: `${progress}%` }}
         />
       </div>

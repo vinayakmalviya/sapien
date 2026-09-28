@@ -10,12 +10,14 @@
  * ------------------------------------------------------------------
  * This is the ONLY place the brand colour is defined. Change this one
  * hex value to change the accent everywhere in the app (buttons,
- * links, focus rings, highlights on both surfaces). The colour
- * decision is not final — keep it isolated here.
+ * links, focus rings, highlights on the operator surface). Final: Rose.
+ * The foreground is dark because white on #E86B78 fails 4.5:1 contrast.
+ * Candidate surfaces override --primary (see .surface-ats) so the rose
+ * never reaches the candidate.
  */
 :root {
-    --brand-accent: #99582a;
-    --brand-accent-foreground: oklch(0.985 0 0);
+    --brand-accent: #E86B78;
+    --brand-accent-foreground: oklch(0.145 0 0);
 
     /*
      * Verdict colours. Reserved for the operator console's verdict
@@ -23,7 +25,7 @@
      * No other UI element may use these three colours.
      */
     --verdict-real: oklch(0.6 0.16 155);        /* emerald — signal: real */
-    --verdict-synthetic: oklch(0.58 0.22 25);   /* red — signal: synthetic */
+    --verdict-synthetic: oklch(0.62 0.21 40);   /* vermilion — signal: synthetic. Hue kept away from the rose (~12). */
     --verdict-uncertain: oklch(0.75 0.16 75);   /* amber — score in the uncertain band */
 }
 
@@ -142,6 +144,20 @@
     --sidebar-accent-foreground: oklch(0.985 0 0);
     --sidebar-border: oklch(1 0 0 / 10%);
     --sidebar-ring: oklch(0.556 0 0);
+}
+
+/* Candidate ATS surface. Sapien's rose must not be visible to the candidate. */
+.surface-ats {
+    --primary: oklch(0.208 0.042 265.755);
+    --primary-foreground: oklch(1 0 0);
+    --ring: oklch(0.704 0.04 256.788);
+}
+
+/* Candidate video call surface. A conferencing blue, never the rose. */
+.surface-call {
+    --primary: oklch(0.546 0.245 262.881);
+    --primary-foreground: oklch(1 0 0);
+    --ring: oklch(0.707 0.165 254.624);
 }
 
 @layer base {

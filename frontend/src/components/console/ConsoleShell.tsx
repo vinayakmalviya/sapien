@@ -1,5 +1,6 @@
 import type { ReactNode } from "react";
 import { Badge } from "@/components/ui/badge";
+import { SapienIcon } from "@/components/console/SapienIcon";
 
 /**
  * Layout shell for the operator surface (`/` and `/console/*`).
@@ -20,7 +21,7 @@ export function ConsoleShell({
     <div className="flex min-h-screen flex-col bg-neutral-950 text-base text-neutral-100">
       <header className="flex items-center justify-between border-b border-neutral-800 px-6 py-4">
         <div className="flex items-center gap-3">
-          <div className="size-2.5 rounded-full bg-brand" />
+          <SapienIcon className="h-7" />
           <p className="text-lg font-semibold tracking-wide">
             SAPIEN <span className="text-neutral-500">/ OPERATOR CONSOLE</span>
           </p>

@@ -14,6 +14,8 @@ const FLAG_REASON_SENTENCES: Record<FlagReasonCode, string> = {
     "The tracking loss ratio was too high — the face was lost too often.",
   word_mismatch:
     "The voice score passed, but the spoken word did not match the expected word.",
+  challenge_failed:
+    "The candidate did not complete the identity check the host asked for during the call.",
   multiple_signals_failed: "Two or more detection modules failed.",
 };
 

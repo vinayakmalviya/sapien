@@ -9,12 +9,22 @@
 // 3.1 / 3.2 — The Prompt object
 // ---------------------------------------------------------------------------
 
-/** The four prompt types the frontend knows how to score. Section 3.2. */
+/** The five prompt types the frontend knows how to score. Section 3.2. */
 export type PromptType =
   | "head_turn_right"
   | "head_turn_left"
   | "speak_word"
-  | "blink";
+  | "blink"
+  | "passive_window";
+
+/** Section 3.5. The default is "ats_interview". */
+export type Scenario = "ats_interview" | "video_call";
+
+/**
+ * Section 3.6. Selects how the frontend presents a prompt. Independent of
+ * `type`, which selects the scorer. Never guess one from the other.
+ */
+export type PromptKind = "scripted" | "passive" | "challenge";
 
 export interface Prompt {
   /** The position of this prompt. The first prompt has index 1. */
@@ -29,6 +39,8 @@ export interface Prompt {
   expected_word: string | null;
   /** The length of the recording window, in milliseconds. 3000-6000. */
   duration_ms: number;
+  /** Selects the presentation. Section 3.6. */
+  kind: PromptKind;
 }
 
 // ---------------------------------------------------------------------------
@@ -55,7 +67,10 @@ export type ApiErrorCode =
   | "AUDIO_DECODE_FAILED"
   | "FRAME_DECODE_FAILED"
   | "MODEL_UNAVAILABLE"
-  | "VALIDATION_ERROR";
+  | "VALIDATION_ERROR"
+  | "CHALLENGE_NOT_SUPPORTED"
+  | "CHALLENGE_ALREADY_ISSUED"
+  | "CHALLENGE_TOO_LATE";
 
 export interface ApiErrorBody {
   error: {
@@ -71,12 +86,15 @@ export interface ApiErrorBody {
 
 export interface StartSessionRequest {
   candidate_id?: string;
+  scenario?: Scenario;
   enabled_modules?: EnabledModules;
 }
 
 export interface StartSessionResponse {
   session_id: string;
   created_at: string;
+  /** Repeats the session's scenario. Selects the candidate route. */
+  scenario: Scenario;
   total_prompts: number;
   enabled_modules: EnabledModules;
   prompt: Prompt;
@@ -171,17 +189,54 @@ export interface CompletedPromptSummary {
   voice_score: number | null;
   word_match: boolean | null;
   latency_ms: number;
+  kind: PromptKind;
 }
 
 export interface SessionStatusResponse {
   session_id: string;
+  scenario: Scenario;
   status: SessionStatus;
   current_prompt_index: number;
   total_prompts: number;
   enabled_modules: EnabledModules;
   completed_prompts: CompletedPromptSummary[];
+  /**
+   * `video_call` only. Recomputed after every submission over the slots
+   * completed so far. null before the first submission, and for
+   * `ats_interview`. Section 12.5.
+   */
+  rolling_result: GetResultResponse | null;
+  /** `video_call` only. null for `ats_interview`. Section 12.4. */
+  challenge: Challenge | null;
   /** null until status is "complete". */
   result: GetResultResponse | null;
+}
+
+// ---------------------------------------------------------------------------
+// 12.4 — The challenge object. 13 — POST /request-challenge
+// ---------------------------------------------------------------------------
+
+export type ChallengeState = "none" | "queued" | "active" | "passed" | "failed";
+
+export type ChallengeSource = "auto" | "operator";
+
+export interface Challenge {
+  state: ChallengeState;
+  /** null when state is "none". */
+  source: ChallengeSource | null;
+  /** The slot that holds the challenge. null when state is "none". */
+  prompt_index: number | null;
+  /** The slot picked for the auto challenge. null after an operator challenge cancels it. */
+  auto_index: number | null;
+}
+
+export interface RequestChallengeRequest {
+  session_id: string;
+}
+
+export interface RequestChallengeResponse {
+  session_id: string;
+  challenge: Challenge;
 }
 
 // ---------------------------------------------------------------------------
@@ -198,6 +253,7 @@ export type FlagReasonCode =
   | "liveness_timing_mismatch"
   | "liveness_no_face_detected"
   | "word_mismatch"
+  | "challenge_failed"
   | "multiple_signals_failed";
 
 export interface ComponentScores {
@@ -260,6 +316,7 @@ export function isKnownPromptType(value: string): value is PromptType {
     value === "head_turn_right" ||
     value === "head_turn_left" ||
     value === "speak_word" ||
-    value === "blink"
+    value === "blink" ||
+    value === "passive_window"
   );
 }

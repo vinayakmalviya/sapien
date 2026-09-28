@@ -44,6 +44,24 @@ This filters out any duplicate-content callback regardless of which of the two r
 
 **Verification after the fix:** repeat the live-camera check from Milestone 3 (start a session, real webcam, turn the head right on prompt 1, read `capture_meta.landmarker_fps` from the `POST /submit-response` request body in the Network tab). Expect a value close to 30, or close to whatever `navigator.mediaDevices.getUserMedia`'s track `getSettings().frameRate` reports for that camera.
 
+### 2. The platform icon is a tall JPEG with a white background
+
+**Found in:** Section 0.2 of `docs/video-call-scenario.md`.
+
+**Symptom:** The browser tab shows the icon squeezed into a square. On the dark operator console, the icon needs a white tile, because one stroke of the icon is black.
+
+**Root cause:** `frontend/public/sapien-icon.jpeg` is 82 by 124 pixels. It has a white background and no transparency. The file is small, so it looks blurred above about 48 pixels tall on a high-density screen.
+
+**Why it is safe to defer:** The icon is visible and recognisable at the current sizes. It is on the operator surface only.
+
+**Fix to apply:**
+1. Get a square PNG or SVG with a transparent background. Use at least 512 by 512 pixels for a PNG.
+2. Put the file in `frontend/public/`.
+3. Change the favicon link in `frontend/index.html` to the new file and its MIME type.
+4. Change the `src` in `frontend/src/components/console/SapienIcon.tsx`. Remove the white tile if the new icon is legible on a dark background.
+
+**Verification after the fix:** The browser tab shows the icon with no distortion. The console header and the launcher show a sharp icon.
+
 ---
 
 ## Closed

@@ -15,9 +15,7 @@ import {
 import { getScorerForPrompt } from "@/scoring/registry";
 import type { LandmarkWindow } from "@/scoring/types";
 import { initialSessionState, sessionReducer } from "./machine";
-
-/** The lead-in before recording starts. Section 7 of frontend-handoff.md. */
-const LEAD_IN_MS = 2000;
+import { getPromptPresentation } from "./presentation";
 
 const EMPTY_WINDOW: LandmarkWindow = {
   samples: [],
@@ -34,17 +32,18 @@ const EMPTY_WINDOW: LandmarkWindow = {
  * `POST /submit-response` call. Section 6.4 and 6.5 of frontend-handoff.md.
  *
  * Milestone 6: `sourceType` picks the webcam or the prepared MP4 clip of
- * the synthetic candidate (Section 6.3). A file source never records
- * audio — there is no live microphone paired with a prerecorded clip.
+ * the synthetic candidate (Section 6.3). A file source records the clip's
+ * own playback audio (`videoSource.audioStream`), so voice prompts carry
+ * an audio clip for both source types.
  */
 export function useSessionRunner(
   sessionId: string,
   sourceType: VideoSourceType = "webcam",
 ) {
   const [state, dispatch] = useReducer(sessionReducer, initialSessionState);
-  const videoSource = useVideoSource(sourceType);
-  const submitResponse = useSubmitResponse();
   const videoRef = useRef<HTMLVideoElement>(null);
+  const videoSource = useVideoSource(sourceType, videoRef);
+  const submitResponse = useSubmitResponse();
   const landmarker = useFaceLandmarker(videoRef);
   const frameSampler = useFrameSampler(videoRef);
   const audioRecorder = useAudioRecorder();
@@ -62,15 +61,12 @@ export function useSessionRunner(
   useEffect(() => {
     if (state.status !== "requesting_permission") return;
     let cancelled = false;
-    videoSource.requestAccess().then((granted) => {
+    videoSource.requestAccess().then((result) => {
       if (cancelled) return;
-      if (granted) {
+      if (result.granted) {
         dispatch({ type: "PERMISSION_GRANTED" });
       } else {
-        dispatch({
-          type: "FATAL_ERROR",
-          message: videoSource.error ?? "Camera access was denied.",
-        });
+        dispatch({ type: "FATAL_ERROR", message: result.error });
       }
     });
     return () => {
@@ -103,15 +99,19 @@ export function useSessionRunner(
     });
   }, [state.status, landmarker.snapshot.consecutiveGoodFrames, sessionId]);
 
-  // prompt_shown -> a 2-second lead-in, then start recording.
+  const presentation = state.currentPrompt
+    ? getPromptPresentation(state.currentPrompt)
+    : null;
+
+  // prompt_shown -> the prompt's lead-in (0 for a passive window), then record.
   useEffect(() => {
-    if (state.status !== "prompt_shown") return;
+    if (state.status !== "prompt_shown" || !state.currentPrompt) return;
     const timer = setTimeout(
       () => dispatch({ type: "LEAD_IN_COMPLETE" }),
-      LEAD_IN_MS,
+      getPromptPresentation(state.currentPrompt).leadInMs,
     );
     return () => clearTimeout(timer);
-  }, [state.status]);
+  }, [state.status, state.currentPrompt]);
 
   // recording -> run for prompt.duration_ms. Capture landmark samples for
   // the whole window, two sampled frames at 40% and 80% of the window, and
@@ -123,10 +123,10 @@ export function useSessionRunner(
     landmarker.beginRecording();
     pendingFramesRef.current = [];
 
-    const shouldRecordAudio = prompt.expected_word !== null;
+    const shouldRecordAudio = getPromptPresentation(prompt).recordsAudio;
     isRecordingAudioRef.current =
-      shouldRecordAudio && videoSource.stream
-        ? audioRecorder.startRecording(videoSource.stream)
+      shouldRecordAudio && videoSource.audioStream
+        ? audioRecorder.startRecording(videoSource.audioStream)
         : false;
 
     const frameTimer1 = setTimeout(() => {
@@ -248,7 +248,7 @@ export function useSessionRunner(
     dispatch({ type: "SHOW_NEXT_PROMPT" });
   }, [state.status]);
 
-  return { state, videoSource, videoRef, landmarker, start };
+  return { state, presentation, videoSource, videoRef, landmarker, start };
 }
 
 function captureDurationSeconds(window: LandmarkWindow): number {
