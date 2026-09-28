@@ -3,7 +3,7 @@ import shutil
 from contextlib import asynccontextmanager
 from dataclasses import asdict
 from pathlib import Path
-from typing import AsyncIterator
+from typing import Annotated, AsyncIterator
 
 from fastapi import FastAPI, File, Form, HTTPException, UploadFile
 from fastapi.concurrency import run_in_threadpool
@@ -19,6 +19,7 @@ from app.audio.analysis import (
 )
 from app.audio.voice_detection import VoiceDetector
 from app.audio.word_match import WordMatcher
+from app.frame_classifier import classify_frame, load_model
 from app.session_api import ApiProblem, create_session_router, error_body
 from vendor.vishield.training.features import AudioValidationError
 
@@ -35,6 +36,7 @@ async def lifespan(_: FastAPI) -> AsyncIterator[None]:
     await run_in_threadpool(word_matcher.load)
     await run_in_threadpool(voice_detector.warm_up)
     await run_in_threadpool(word_matcher.warm_up)
+    await run_in_threadpool(load_model)
     yield
 
 
@@ -117,3 +119,12 @@ async def submit_audio(
         "word_match": asdict(word_result),
         "flag_reason": None if word_result.matched else "expected_word_mismatch",
     }
+
+
+# dev
+@app.post("/classify-frame")
+async def classify_uploaded_frame(
+    frame: Annotated[UploadFile, File(...)],
+):
+    frame_bytes = await frame.read()
+    return classify_frame(frame_bytes)
